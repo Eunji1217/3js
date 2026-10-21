@@ -16,7 +16,7 @@
       }
       #hud div > b:first-child { display: inline-block; min-width: 92px; }
       #hud button {
-        margin-top: 6px; padding: 4px 10px; border: 1px solid #999; border-radius: 6px;
+        margin-top: 6px; margin-right: 6px; padding: 4px 10px; border: 1px solid #999; border-radius: 6px;
         background: #fff; cursor: pointer; font: inherit;
       }
       #hud button:hover { background: #eee; }
@@ -32,29 +32,90 @@
         pointer-events: none;
       }
 
-      #skinPanel {
+      /* 패널 (스킨 / 무기) */
+      .panel {
         position: fixed; right: 12px; top: 12px; width: 300px; z-index: 20;
         background: rgba(255, 255, 255, 0.95); border: 1px solid #ccc; border-radius: 10px;
         padding: 12px 14px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
       }
-      #skinPanel h3 { margin: 0 0 8px; font-size: 15px; display: flex; justify-content: space-between; align-items: center; }
-      #skinPanel h3 button { border: 0; background: none; font-size: 18px; cursor: pointer; }
+      .panel h3 { margin: 0 0 8px; font-size: 15px; display: flex; justify-content: space-between; align-items: center; }
+      .panel h3 button { border: 0; background: none; font-size: 18px; cursor: pointer; }
       .skin { display: flex; gap: 6px; margin-bottom: 6px; }
       .skin button { flex: 1; text-align: left; padding: 6px 10px; border: 1px solid #bbb; border-radius: 6px; background: #fff; cursor: pointer; font: inherit; }
       .skin button:hover { background: #f2f2f2; }
       .skin.active button:first-child { border-color: #2b7cff; background: #e8f0ff; font-weight: 600; }
       .skin button.del { flex: 0 0 32px; text-align: center; color: #b00; }
       .skin button:disabled { opacity: 0.5; cursor: wait; }
-      #skinPanel .add { margin-top: 12px; padding-top: 10px; border-top: 1px solid #ddd; }
-      #skinPanel .add input[type="text"], #skinPanel .add input:not([type]) { flex: 1; box-sizing: border-box; padding: 6px 8px; border: 1px solid #bbb; border-radius: 6px; font: inherit; min-width: 0; }
-      #skinPanel .add button { padding: 6px 10px; border: 1px solid #2b7cff; border-radius: 6px; background: #fff; color: #2b7cff; cursor: pointer; font: inherit; }
-      #skinPanel .add button.primary { width: 100%; background: #2b7cff; color: #fff; }
-      #skinPanel .add .row { display: flex; gap: 6px; margin-top: 8px; }
-      #skinPanel .drop { margin-top: 6px; padding: 8px; border: 1px dashed #aaa; border-radius: 6px; text-align: center; font-size: 12px; color: #777; }
-      body.dragging #skinPanel .drop { border-color: #2b7cff; color: #2b7cff; background: #eef4ff; }
-      #skinPanel .help { margin-top: 8px; font-size: 12px; color: #666; line-height: 1.45; }
-      #skinPanel .help a { color: #2b7cff; }
-      #skinPanel .help code { background: #eee; padding: 0 4px; border-radius: 3px; }
+      .skin.weapon button { display: flex; justify-content: space-between; align-items: baseline; }
+      .skin.weapon small { color: #777; font-weight: 400; }
+      .panel .add { margin-top: 12px; padding-top: 10px; border-top: 1px solid #ddd; }
+      .panel .add input[type="text"], .panel .add input:not([type]) { flex: 1; box-sizing: border-box; padding: 6px 8px; border: 1px solid #bbb; border-radius: 6px; font: inherit; min-width: 0; }
+      .panel .add button { padding: 6px 10px; border: 1px solid #2b7cff; border-radius: 6px; background: #fff; color: #2b7cff; cursor: pointer; font: inherit; }
+      .panel .add button.primary { width: 100%; background: #2b7cff; color: #fff; }
+      .panel .add .row { display: flex; gap: 6px; margin-top: 8px; }
+      .panel .drop { margin-top: 6px; padding: 8px; border: 1px dashed #aaa; border-radius: 6px; text-align: center; font-size: 12px; color: #777; }
+      body.dragging .panel .drop { border-color: #2b7cff; color: #2b7cff; background: #eef4ff; }
+      .panel .help { margin-top: 8px; font-size: 12px; color: #666; line-height: 1.45; }
+      .panel .help a { color: #2b7cff; }
+      .panel .help code { background: #eee; padding: 0 4px; border-radius: 3px; }
+      .panel .foot { margin-top: 10px; display: flex; justify-content: flex-end; }
+      .panel .foot button { padding: 4px 10px; border: 1px solid #999; border-radius: 6px; background: #fff; cursor: pointer; font: inherit; }
+
+      /* 조준선: --gap 이 퍼짐 정도 */
+      #crosshair { position: fixed; left: 50%; top: 50%; width: 0; height: 0; z-index: 15; pointer-events: none; --gap: 6px; }
+      #crosshair i { position: absolute; background: #fff; box-shadow: 0 0 2px #000; transition: top 0.08s, left 0.08s, background 0.05s; }
+      #crosshair i:nth-child(1) { left: -1px; top: calc(-1 * var(--gap) - 8px); width: 2px; height: 8px; }
+      #crosshair i:nth-child(2) { left: -1px; top: var(--gap); width: 2px; height: 8px; }
+      #crosshair i:nth-child(3) { top: -1px; left: calc(-1 * var(--gap) - 8px); width: 8px; height: 2px; }
+      #crosshair i:nth-child(4) { top: -1px; left: var(--gap); width: 8px; height: 2px; }
+      #crosshair b { position: absolute; left: -1.5px; top: -1.5px; width: 3px; height: 3px; border-radius: 50%; background: #fff; box-shadow: 0 0 2px #000; }
+      #crosshair.hit i, #crosshair.hit b { background: #ff4d4d; }
+      #hitPop {
+        position: fixed; left: 50%; top: calc(50% - 44px); z-index: 15; pointer-events: none;
+        color: #ffd25a; font-weight: 700; font-size: 22px; text-shadow: 0 0 4px #000, 0 0 2px #000;
+        animation: pop 0.6s ease-out forwards;
+      }
+      @keyframes pop { from { opacity: 1; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, -30px); } }
+
+      /* 저격총 스코프 */
+      #scope {
+        position: fixed; inset: 0; z-index: 14; pointer-events: none;
+        background: radial-gradient(circle at center, transparent 0 34vmin, rgba(0, 0, 0, 0.97) 35vmin);
+      }
+      #scope::before, #scope::after { content: ''; position: absolute; left: 50%; top: 50%; background: #111; transform: translate(-50%, -50%); }
+      #scope::before { width: 70vmin; height: 1px; }
+      #scope::after { width: 1px; height: 70vmin; }
+
+      #weaponHud {
+        position: fixed; right: 12px; bottom: 12px; z-index: 16; min-width: 120px;
+        background: rgba(0, 0, 0, 0.65); color: #fff; padding: 10px 16px; border-radius: 8px;
+        text-align: right; user-select: none;
+      }
+      #wName { font-size: 14px; opacity: 0.85; }
+      #wAmmo { font-size: 26px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+      #wStatus { font-size: 12px; color: #ffd25a; min-height: 18px; }
+      #scoreHud {
+        position: fixed; right: 12px; top: 12px; z-index: 10;
+        background: rgba(0, 0, 0, 0.65); color: #fff; padding: 6px 14px; border-radius: 8px;
+        user-select: none; font-variant-numeric: tabular-nums;
+      }
+
+      /* 무기 휠 (T) */
+      #wheel {
+        position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 18;
+        width: 300px; height: 300px; pointer-events: none; user-select: none;
+      }
+      #wheel svg { width: 100%; height: 100%; overflow: visible; }
+      #wheel path { fill: rgba(20, 20, 24, 0.78); stroke: rgba(255, 255, 255, 0.35); stroke-width: 1.5; transition: fill 0.08s; }
+      #wheel path.active { fill: rgba(255, 210, 90, 0.9); }
+      #wheel text { fill: #fff; text-anchor: middle; dominant-baseline: middle; font: 600 14px system-ui, sans-serif; pointer-events: none; }
+      #wheel text.sub { font-size: 11px; font-weight: 400; opacity: 0.8; }
+      #wheel .dot { fill: #fff; stroke: #000; stroke-width: 1; }
+      #wheelLabel {
+        position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        color: #fff; font-weight: 700; font-size: 15px; text-shadow: 0 0 4px #000; text-align: center; width: 90px;
+      }
+      #wheelHint { position: absolute; left: 50%; bottom: -34px; transform: translateX(-50%); color: #fff; font-size: 12px; white-space: nowrap; text-shadow: 0 0 4px #000; }
 
       #loading {
         position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -66,19 +127,49 @@
     <div id="loading">모델 불러오는 중...</div>
     <div id="toast" class="hidden"></div>
     <div id="prompt" class="hidden"></div>
+    <div id="scope" class="hidden"></div>
+    <div id="crosshair" class="hidden"><i></i><i></i><i></i><i></i><b></b></div>
+    <div id="hitPop" class="hidden"></div>
+    <div id="scoreHud" class="hidden"></div>
+    <div id="wheel" class="hidden">
+      <svg id="wheelSvg" viewBox="0 0 300 300"></svg>
+      <div id="wheelLabel"></div>
+      <div id="wheelHint">마우스로 고르고 T 를 떼면 장착</div>
+    </div>
 
     <div id="hud">
       <div><b>W A S D</b> 이동 (화살표도 가능)</div>
       <div><b>Shift</b> 달리기 · <b>Space</b> 점프</div>
-      <div><b>마우스 드래그</b> 시점 회전 · 휠 줌 (3인칭)</div>
+      <div><b>마우스</b> 시점 회전 (클릭해 잠금 · ESC 해제) · <b>- / =</b> 카메라 거리</div>
       <div><b>V</b> 1인칭 / 3인칭 전환</div>
-      <div><b>E</b> 문 열기 / 닫기 (문 앞에서)</div>
+      <div><b>E</b> 문 열기 / 닫기 · 무기 선반</div>
+      <div><b>T (누르기)</b> 무기 휠 · <b>1 ~ 5</b> 바로 선택 · <b>X</b> 넣기</div>
+      <div><b>휠 스크롤</b> 무기 넘기기 (맨손에서도)</div>
+      <div><b>좌클릭</b> 사격 / 칼 / 주먹 · <b>우클릭</b> 조준 · <b>R</b> 재장전</div>
+      <div><b>우클릭 2번</b> 조준경 배율 전환 (1인칭 소총 · 저격총)</div>
       <div id="mode">모드: 3인칭</div>
       <div id="room">현재: 침실</div>
       <button id="skinOpen">스킨 선택 (Tab)</button>
+      <button id="weaponOpen">무기 선택</button>
     </div>
 
-    <div id="skinPanel" class="hidden">
+    <div id="weaponHud" class="hidden">
+      <div id="wName"></div>
+      <div id="wAmmo"></div>
+      <div id="wStatus"></div>
+    </div>
+
+    <div id="weaponPanel" class="panel hidden">
+      <h3>무기 선택 <button id="weaponClose" title="닫기">×</button></h3>
+      <div id="weaponList"></div>
+      <div class="help">
+        사격장은 거실 오른쪽 문 너머에 있어요. <b>우클릭</b>으로 조준하면 더 정확하고, 저격총은 1인칭에서 조준하면 스코프가 켜져요.
+        표적 가운데(빨간 점)에 가까울수록 높은 점수입니다.
+      </div>
+      <div class="foot"><button id="scoreReset">점수 초기화</button></div>
+    </div>
+
+    <div id="skinPanel" class="panel hidden">
       <h3>스킨 선택 <button id="skinClose" title="닫기">×</button></h3>
       <div id="skinList"></div>
       <div class="add">

@@ -14,8 +14,12 @@ export class Input {
     this.wheel = 0;
     this.dragging = false;
     this.pointerLocked = false;
+    this.mouse = new Set();    // 눌려 있는 마우스 버튼 (0 왼쪽, 2 오른쪽)
     this.onToggleView = null;  // V 키 콜백
     this.onToggleSkins = null; // Tab 키 콜백
+    this.onSelectWeapon = null; // 숫자키(0부터 시작하는 인덱스) / X 키(null) 콜백
+    this.onWheelKey = null;     // T 키 누름(true)/뗌(false) 콜백 — 무기 휠
+    this.onMove = null;         // 마우스 이동 원시 콜백 (dx, dy) — 잠김/드래그와 무관하게 항상 호출
 
     window.addEventListener('keydown', (e) => {
       if (isTyping(e)) return;
@@ -26,21 +30,38 @@ export class Input {
       this.justPressed.add(e.code);
       if (e.code === 'KeyV' && this.onToggleView) this.onToggleView();
       if (e.code === 'Tab' && this.onToggleSkins) this.onToggleSkins();
+      if (e.code === 'KeyT' && this.onWheelKey) this.onWheelKey(true);
+      if (this.onSelectWeapon) {
+        if (/^Digit[1-9]$/.test(e.code)) this.onSelectWeapon(Number(e.code[5]) - 1);
+        if (e.code === 'KeyX') this.onSelectWeapon(null);
+      }
     });
-    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('keyup', (e) => {
+      this.keys.delete(e.code);
+      if (e.code === 'KeyT' && this.onWheelKey) this.onWheelKey(false);
+    });
+    window.addEventListener('blur', () => { this.keys.clear(); this.mouse.clear(); });
 
+    // 마우스 버튼은 'Mouse0', 'Mouse2' 이름으로 pressed() 에서도 조회할 수 있다
     domElement.addEventListener('mousedown', (e) => {
+      this.mouse.add(e.button);
+      this.justPressed.add('Mouse' + e.button);
       if (e.button === 0) this.dragging = true;
     });
-    window.addEventListener('mouseup', () => (this.dragging = false));
+    window.addEventListener('mouseup', (e) => {
+      this.mouse.delete(e.button);
+      if (e.button === 0) this.dragging = false;
+    });
     window.addEventListener('mousemove', (e) => {
+      if (this.onMove) this.onMove(e.movementX, e.movementY);
       if (this.pointerLocked || this.dragging) {
         this.mouseDX += e.movementX;
         this.mouseDY += e.movementY;
       }
     });
-    domElement.addEventListener('wheel', (e) => {
+    // 휠은 창 전체에서 받는다 (HUD 위에 커서가 있어도 무기 전환이 되게). 패널 안 스크롤은 제외
+    window.addEventListener('wheel', (e) => {
+      if (e.target instanceof Element && e.target.closest('.panel')) return;
       this.wheel += e.deltaY;
       e.preventDefault();
     }, { passive: false });
@@ -52,7 +73,9 @@ export class Input {
   }
 
   requestPointerLock() {
-    if (this.dom.requestPointerLock) this.dom.requestPointerLock();
+    if (!this.dom.requestPointerLock) return;
+    const p = this.dom.requestPointerLock();
+    if (p && p.catch) p.catch(() => {}); // 사용자 동작 없이 호출되면 거부되는데, 그때는 클릭으로 다시 잠근다
   }
 
   exitPointerLock() {
@@ -66,6 +89,10 @@ export class Input {
   // 이번 프레임에 새로 눌렸는지
   pressed(code) {
     return this.justPressed.has(code);
+  }
+
+  mouseDown(button) {
+    return this.mouse.has(button);
   }
 
   // 이동 입력을 -1~1 벡터로 반환 (x: 오른쪽, z: 앞)

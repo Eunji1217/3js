@@ -131,7 +131,13 @@ export class Player {
     this.run = this.mixer.clipAction(run);
     this.current = null;
     this.play(this.idle, 0);
+    this.onModelChanged?.(this); // 무기 등 모델에 붙는 것들을 다시 붙일 기회
     return this;
+  }
+
+  // 이름이 suffix 로 끝나는 뼈 (예: 'RightHand' → mixamorigRightHand)
+  getBone(suffix) {
+    return this.model ? findBone(this.model, suffix) : null;
   }
 
   // Soldier 의 Idle/Walk/Run 을 다른 Mixamo 리그(Ready Player Me, Mixamo FBX 등)로 옮긴다

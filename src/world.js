@@ -1,20 +1,23 @@
 import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { Door } from './door.js';
+import { RANGE_ROOM, buildRange } from './range.js';
 
 export const WALL_H = 3;     // 천장 높이
 const T = 0.16;              // 벽 두께
 
-// 방 정의. 같은 x=5 벽을 공유하고, 그 벽의 z=-0.5~0.5 에 문이 있다.
+// 방 정의. 침실-거실은 x=5 벽, 거실-사격장은 x=15 벽을 공유하고 각 벽의 z=-0.5~0.5 에 문이 있다.
 export const ROOMS = [
   { id: 'bedroom', name: '침실', minX: -5, maxX: 5, minZ: -5, maxZ: 5, floor: 0xd9d2c5, wall: 0xf2f0ea },
   { id: 'living', name: '거실', minX: 5, maxX: 15, minZ: -5, maxZ: 5, floor: 0xc9b99a, wall: 0xeae6dc },
+  RANGE_ROOM,
 ];
 
 export function createWorld() {
   const group = new THREE.Group();
   const colliders = [];  // 정적 충돌 상자 (Box3)
   const wallMeshes = []; // 카메라가 통과하면 안 되는 메시
+  const shootables = []; // 총알이 맞을 수 있는 메시 (벽, 가구, 표적)
   const doors = [];
 
   const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, ...extra });
@@ -39,6 +42,7 @@ export function createWorld() {
     ceil.position.set(cx, WALL_H, cz);
     group.add(ceil);
     wallMeshes.push(floor, ceil);
+    shootables.push(floor, ceil);
   }
 
   // --- 벽 (축 정렬 선분을 두께 T 의 박스로) ---
@@ -54,10 +58,11 @@ export function createWorld() {
     m.castShadow = true;
     group.add(m);
     wallMeshes.push(m);
+    shootables.push(m);
     if (collide) colliders.push(new THREE.Box3().setFromObject(m));
     return m;
   };
-  const [bed, liv] = ROOMS;
+  const [bed, liv, rng] = ROOMS;
   // 침실
   wall(bed.minX, bed.minZ, bed.maxX, bed.minZ, bed.wall);
   wall(bed.minX, bed.maxZ, bed.maxX, bed.maxZ, bed.wall);
@@ -65,25 +70,32 @@ export function createWorld() {
   // 거실
   wall(liv.minX, liv.minZ, liv.maxX, liv.minZ, liv.wall);
   wall(liv.minX, liv.maxZ, liv.maxX, liv.maxZ, liv.wall);
-  wall(liv.maxX, liv.minZ, liv.maxX, liv.maxZ, liv.wall);
-  // 공유 벽 (x=5) — 문 자리 z=-0.5~0.5 를 비워 둔다
-  const DOOR_W = 1.0, DOOR_H = 2.1, DOOR_Z = -0.5;
-  wall(5, bed.minZ, 5, DOOR_Z, 0xeeeae2);
-  wall(5, DOOR_Z + DOOR_W, 5, bed.maxZ, 0xeeeae2);
-  wall(5, DOOR_Z, 5, DOOR_Z + DOOR_W, 0xeeeae2, { y0: DOOR_H, collide: false }); // 문 위 상인방
-  // 문틀
-  const frameMat = std(0x5a4030, { roughness: 0.7 });
-  for (const z of [DOOR_Z - 0.04, DOOR_Z + DOOR_W + 0.04]) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(T + 0.04, DOOR_H + 0.04, 0.08), frameMat);
-    post.position.set(5, (DOOR_H + 0.04) / 2, z);
-    group.add(post);
-  }
+  // 사격장
+  wall(rng.minX, rng.minZ, rng.maxX, rng.minZ, rng.wall);
+  wall(rng.minX, rng.maxZ, rng.maxX, rng.maxZ, rng.wall);
+  wall(rng.maxX, rng.minZ, rng.maxX, rng.maxZ, rng.wall);
 
-  // --- 문 ---
-  const door = new Door({ x: 5, z: DOOR_Z, width: DOOR_W, height: DOOR_H, label: '거실 문' });
-  group.add(door.group);
-  doors.push(door);
-  wallMeshes.push(door.panel);
+  // 공유 벽에 문을 낸다: x 위치의 벽을 z=doorZ~doorZ+DOOR_W 만 비우고 상인방·문틀·문을 세운다
+  const DOOR_W = 1.0, DOOR_H = 2.1;
+  const frameMat = std(0x5a4030, { roughness: 0.7 });
+  const doorway = (x, minZ, maxZ, doorZ, color, label) => {
+    wall(x, minZ, x, doorZ, color);
+    wall(x, doorZ + DOOR_W, x, maxZ, color);
+    wall(x, doorZ, x, doorZ + DOOR_W, color, { y0: DOOR_H, collide: false }); // 문 위 상인방
+    for (const z of [doorZ - 0.04, doorZ + DOOR_W + 0.04]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(T + 0.04, DOOR_H + 0.04, 0.08), frameMat);
+      post.position.set(x, (DOOR_H + 0.04) / 2, z);
+      group.add(post);
+    }
+    const door = new Door({ x, z: doorZ, width: DOOR_W, height: DOOR_H, label });
+    group.add(door.group);
+    doors.push(door);
+    wallMeshes.push(door.panel);
+    shootables.push(door.panel);
+    return door;
+  };
+  doorway(5, bed.minZ, bed.maxZ, -0.5, 0xeeeae2, '거실 문');
+  doorway(15, liv.minZ, liv.maxZ, -0.5, 0xdcdcd4, '사격장 문');
 
   // --- 가구 ---
   const box = (sx, sy, sz, x, z, color, { y = sy / 2, collide = true, roughness = 0.7 } = {}) => {
@@ -92,6 +104,7 @@ export function createWorld() {
     m.castShadow = true;
     m.receiveShadow = true;
     group.add(m);
+    shootables.push(m);
     if (collide) colliders.push(new THREE.Box3().setFromObject(m));
     return m;
   };
@@ -122,6 +135,9 @@ export function createWorld() {
   box(0.5, 0.35, 0.5, 13.5, -3.5, 0xf6e7c1, { y: 2.1, collide: false });   // 스탠드 갓
   box(0.8, 1.6, 0.4, 13.0, 4.6, 0x4f6b4f);                    // 화분/장식장
 
+  // 사격장 (표적, 사대, 무기 선반 등)
+  const range = buildRange({ group, std, box, shootables });
+
   // --- 거울 (침실 왼쪽 벽) ---
   const mirror = new Reflector(new THREE.PlaneGeometry(1.6, 2.2), {
     clipBias: 0.003,
@@ -142,15 +158,15 @@ export function createWorld() {
   // --- 조명 ---
   group.add(new THREE.HemisphereLight(0xffffff, 0xcfc8bb, 1.1));
   const sun = new THREE.DirectionalLight(0xffffff, 2.0);
-  sun.position.set(8, 6, 2);
-  sun.target.position.set(5, 0, 0);
+  sun.position.set(14, 6, 2);
+  sun.target.position.set(11, 0, 0);
   group.add(sun.target);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.near = 0.5;
-  sun.shadow.camera.far = 25;
-  sun.shadow.camera.left = -12;
-  sun.shadow.camera.right = 12;
+  sun.shadow.camera.far = 30;
+  sun.shadow.camera.left = -18;
+  sun.shadow.camera.right = 18;
   sun.shadow.camera.top = 8;
   sun.shadow.camera.bottom = -8;
   sun.shadow.bias = -0.0005;
@@ -175,5 +191,5 @@ export function createWorld() {
   // 정적 + 문 충돌 상자
   const allColliders = () => colliders.concat(doors.map((d) => d.collider));
 
-  return { group, colliders, allColliders, wallMeshes, doors, rooms: ROOMS, bounds, height: WALL_H, roomAt, mirror };
+  return { group, colliders, allColliders, wallMeshes, shootables, doors, rooms: ROOMS, bounds, height: WALL_H, roomAt, mirror, range };
 }
