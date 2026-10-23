@@ -1,3 +1,19 @@
+import { schemaFor, DEFAULT_PARAMS, PRESETS, randomParams, sanitize } from './qchar.js';
+import { extractPalette, paletteToParams } from './palette.js';
+
+const IMAGE_RE = /\.(jpe?g|png|webp|gif|bmp)$/i;
+
+// 로더가 던진 영어 오류를 어떻게 해야 하는지까지 포함한 한국어 안내로 바꾼다
+function friendlyLoadError(err) {
+  const msg = String(err?.message || err);
+  if (/FBX version not supported/i.test(msg)) {
+    const ver = msg.match(/FileVersion:\s*(\d+)/)?.[1];
+    return `FBX 파일 버전이 너무 낮아요${ver ? ` (${ver})` : ''}. FBX 6.4 이상(보통 7.4)이 필요해요. Mixamo 에서 Format 을 "FBX Binary(.fbx)" 로 골라 다시 받아 주세요 (FBX 6.11 은 안 돼요).`;
+  }
+  if (/Unknown format/i.test(msg)) return 'FBX 파일이 아니거나 깨진 파일이에요. 다시 받아 보세요.';
+  return msg;
+}
+
 // HUD, 상호작용 안내, 스킨 선택 패널, 무기 HUD/패널
 export class UI {
   constructor(skins, { onSelectSkin }) {
@@ -31,7 +47,12 @@ export class UI {
     window.addEventListener('drop', (e) => {
       e.preventDefault();
       document.body.classList.remove('dragging');
-      this.addFiles(e.dataTransfer.files);
+      const files = [...e.dataTransfer.files];
+      // 커스터마이저가 열려 있을 때 이미지를 떨어뜨리면 사진 색 맞추기, 아니면 스킨 파일 추가
+      const image = files.find((f) => f.type.startsWith('image/') || IMAGE_RE.test(f.name));
+      if (image && this.charPanelOpen) this.applyPhoto(image);
+      else if (image) this.toast('사진은 "내 캐릭터 만들기" 창을 연 상태에서 넣어 주세요', 4000);
+      this.addFiles(files.filter((f) => f !== image));
     });
 
     // 링크로 추가
@@ -39,6 +60,30 @@ export class UI {
     this.$('skinUrl').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') this.addUrl();
     });
+
+    // 캐릭터 커스터마이저
+    this.charPanel = this.$('charPanel');
+    this.charForm = this.$('charForm');
+    this.charParams = null;   // 편집 중인 값
+    this.charEditing = null;  // 기존 캐릭터를 고치는 중이면 그 스킨
+    this.charPrevId = null;   // 취소 시 되돌릴 스킨
+    this.onCustomChange = null; // (params) => 부품 다시 조립
+    this.onPanelsChanged = null; // 패널이 열리고 닫힐 때 (포인터락 동기화용)
+    this.onCustomizerOpen = null; // 커스터마이저가 열릴 때 (카메라를 정면으로)
+    this.$('charNew').addEventListener('click', () => this.openCustomizer(null));
+    this.$('charClose').addEventListener('click', () => this.cancelCustomizer());
+    this.$('charCancel').addEventListener('click', () => this.cancelCustomizer());
+    this.$('charSave').addEventListener('click', () => this.saveCustomizer());
+    this.$('charRandom').addEventListener('click', () => this.setCharParams(randomParams(this.charParams?.family)));
+    // 사진으로 색 맞추기 (jpg/png → 상의·하의·소매·신발·머리색)
+    this.charPhoto = null; // 편집 중인 캐릭터의 사진 썸네일 (dataURL). 저장 시 스킨에 같이 들어간다
+    const photoInput = this.$('charPhoto');
+    this.$('charPhotoBtn').addEventListener('click', () => photoInput.click());
+    photoInput.addEventListener('change', () => { if (photoInput.files[0]) this.applyPhoto(photoInput.files[0]); photoInput.value = ''; });
+    this.$('charPhotoClear').addEventListener('click', () => this.setPhoto(null));
+    for (const btn of this.charPanel.querySelectorAll('[data-preset]')) {
+      btn.addEventListener('click', () => this.setCharParams({ ...this.charParams, ...PRESETS[btn.dataset.preset] }));
+    }
 
     // 무기
     this.weaponPanel = this.$('weaponPanel');
@@ -61,7 +106,75 @@ export class UI {
     this.$('weaponClose').addEventListener('click', () => this.toggleWeaponPanel(false));
     this.$('scoreReset').addEventListener('click', () => this.onResetScore?.());
 
+    // 연습 게임
+    this.gameHud = this.$('gameHud');
+    this.gameCount = this.$('gameCount');
+    this.gamePanel = this.$('gamePanel');
+    this.onGameToggle = null;  // 시작/중지 버튼·G 키
+    this.onGameDismiss = null; // 결과 창 닫기
+    this._game = { state: null, text: null, count: null, show: null };
+    this.$('gameStart').addEventListener('click', () => this.onGameToggle?.());
+    this.$('gameAgain').addEventListener('click', () => this.onGameToggle?.());
+    this.$('gameClose').addEventListener('click', () => this.toggleGamePanel(false));
+    this.$('gameDismiss').addEventListener('click', () => this.toggleGamePanel(false));
+
     this.refresh();
+  }
+
+  get gamePanelOpen() {
+    return !this.gamePanel.classList.contains('hidden');
+  }
+
+  toggleGamePanel(force) {
+    const open = force === undefined ? !this.gamePanelOpen : force;
+    if (open === this.gamePanelOpen) return;
+    this.gamePanel.classList.toggle('hidden', !open);
+    if (!open) this.onGameDismiss?.();
+    this.onPanelsChanged?.();
+  }
+
+  // 매 프레임 호출: 게임 상태에 따라 상단 타이머·카운트다운·결과 창을 갱신한다
+  setGame(game) {
+    const g = this._game;
+    const { state } = game;
+    // 카운트다운 숫자 (화면 중앙)
+    const count = state === 'countdown' ? String(Math.ceil(game.time)) : state === 'running' && game.time > game.total - 0.8 ? '시작!' : null;
+    if (g.count !== count) {
+      g.count = count;
+      this.gameCount.classList.toggle('hidden', !count);
+      if (count) this.gameCount.textContent = count;
+    }
+    // 상단 타이머
+    const show = state === 'countdown' || state === 'running';
+    this.gameHud.classList.toggle('hidden', !show);
+    if (show) {
+      const t = state === 'running' ? game.time : game.total;
+      const text = `${t.toFixed(1)}|${game.score}|${game.hits}|${game.shots}`;
+      if (g.text !== text) { // 바뀐 프레임에만 DOM 을 건드린다
+        g.text = text;
+        this.$('gameTime').textContent = t.toFixed(1);
+        this.$('gameScore').textContent = `점수 ${game.score} · 명중 ${game.hits} / ${game.shots}`;
+      }
+      this.gameHud.classList.toggle('urgent', state === 'running' && game.time < 10);
+    }
+    if (g.show !== show) {
+      g.show = show;
+      this.$('gameStart').textContent = show ? '연습 게임 중지 (G)' : '연습 게임 시작 (G)';
+    }
+    // 끝나면 결과 창 한 번 열기
+    if (state !== g.state) {
+      g.state = state;
+      if (state === 'over') {
+        const acc = game.shots ? Math.round((game.hits / game.shots) * 100) : 0;
+        this.$('gameResult').innerHTML =
+          `<div class="big">${game.score}<small>점</small></div>` +
+          `<div>명중 ${game.hits} / ${game.shots} (${acc}%)</div>` +
+          `<div>최고 기록 ${game.best}점${game.isBest ? ' <b>🏆 신기록!</b>' : ''}</div>`;
+        this.toggleGamePanel(true);
+      } else if (state === 'countdown') {
+        this.toggleGamePanel(false);
+      }
+    }
   }
 
   get panelOpen() {
@@ -72,20 +185,172 @@ export class UI {
     return !this.weaponPanel.classList.contains('hidden');
   }
 
+  get charPanelOpen() {
+    return !this.charPanel.classList.contains('hidden');
+  }
+
   get anyPanelOpen() {
-    return this.panelOpen || this.weaponPanelOpen;
+    return this.panelOpen || this.weaponPanelOpen || this.charPanelOpen || this.gamePanelOpen;
   }
 
   togglePanel(force) {
     const open = force === undefined ? !this.panelOpen : force;
     this.panel.classList.toggle('hidden', !open);
-    if (open) this.weaponPanel.classList.add('hidden');
+    if (open) { this.weaponPanel.classList.add('hidden'); this.charPanel.classList.add('hidden'); }
+    this.onPanelsChanged?.();
   }
 
   toggleWeaponPanel(force) {
     const open = force === undefined ? !this.weaponPanelOpen : force;
     this.weaponPanel.classList.toggle('hidden', !open);
-    if (open) this.panel.classList.add('hidden');
+    if (open) { this.panel.classList.add('hidden'); this.charPanel.classList.add('hidden'); }
+    this.onPanelsChanged?.();
+  }
+
+  // --- 캐릭터 커스터마이저 ---
+  async openCustomizer(skin) {
+    if (this.busy) return;
+    this.charEditing = skin;
+    this.charPrevId = this.skins.selectedId;
+    this.$('charName').value = skin ? skin.name : '';
+    this.panel.classList.add('hidden');
+    this.weaponPanel.classList.add('hidden');
+    this.charPanel.classList.remove('hidden');
+    this.onPanelsChanged?.();
+    this.onCustomizerOpen?.(); // 카메라를 얼굴 쪽으로
+    // 미리보기: 저장 전까지는 임시 스킨으로 보여 준다
+    const params = sanitize(skin?.params);
+    this.busy = true;
+    try {
+      await this.onSelectSkin({ id: 'preview', name: '미리보기', format: 'qchar', params });
+    } catch (err) {
+      console.error(err);
+      this.toast('캐릭터를 만들지 못했어요: ' + friendlyLoadError(err), 6000);
+    }
+    this.busy = false;
+    this.setCharParams(params);
+    this.setPhoto(skin?.photo || null, skin?.palette || null);
+  }
+
+  // 사진 → 색 뽑기 → 캐릭터 색에 적용. 썸네일과 색 견본을 패널에 보여 준다
+  async applyPhoto(file) {
+    if (file.size > 20 * 1024 * 1024) { this.toast('사진이 너무 커요 (20MB 이하)', 4000); return; }
+    try {
+      const { colors, thumb } = await extractPalette(file);
+      const hexes = colors.map((c) => c.hex);
+      this.setPhoto(thumb, hexes);
+      this.setCharParams({ ...this.charParams, ...paletteToParams(colors) });
+      this.toast('사진 색을 옷·머리에 입혔어요. 마음에 안 드는 부분은 아래 색상 칸에서 바꾸세요', 3500);
+    } catch (err) {
+      console.error(err);
+      this.toast(err.message || '사진을 읽지 못했어요', 4000);
+    }
+  }
+
+  // 패널의 사진 썸네일·색 견본 표시 (photo 가 null 이면 지움)
+  setPhoto(photo, palette = null) {
+    this.charPhoto = photo;
+    this.charPalette = palette;
+    const img = this.$('charPhotoThumb');
+    img.src = photo || '';
+    img.classList.toggle('hidden', !photo);
+    this.$('charPhotoClear').classList.toggle('hidden', !photo);
+    const sw = this.$('charSwatches');
+    sw.innerHTML = '';
+    for (const hex of palette || []) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'swatch';
+      b.style.background = hex;
+      b.title = `${hex} · 클릭: 상의 색으로`;
+      b.addEventListener('click', () => this.setCharParams({ ...this.charParams, topColor: hex }));
+      sw.appendChild(b);
+    }
+  }
+
+  // 값 전체를 바꾸고 폼과 캐릭터를 갱신한다
+  setCharParams(params) {
+    this.charParams = sanitize(params);
+    this.renderCharForm();
+    this.pushCharParams();
+  }
+
+  // 부품 로드가 비동기라 호출이 겹칠 수 있다. 마지막 요청만 반영되게 직렬화한다
+  pushCharParams() {
+    const P = { ...this.charParams };
+    this._charQueue = (this._charQueue || Promise.resolve()).then(() => this.onCustomChange?.(P)).catch((err) => {
+      console.error(err);
+      this.toast('부품을 불러오지 못했어요: ' + friendlyLoadError(err), 5000);
+    });
+  }
+
+  renderCharForm() {
+    const P = this.charParams;
+    this.charForm.innerHTML = '';
+    for (const group of schemaFor(P)) {
+      const det = document.createElement('details');
+      det.open = group.group === '기본' || group.group === '얼굴';
+      const sum = document.createElement('summary');
+      sum.textContent = group.group;
+      det.appendChild(sum);
+      for (const f of group.fields) {
+        const row = document.createElement('div');
+        row.className = 'field';
+        const label = document.createElement('label');
+        label.textContent = f.label;
+        row.appendChild(label);
+        let input;
+        if (f.type === 'select') {
+          input = document.createElement('select');
+          for (const [v, text] of Object.entries(f.options)) {
+            const opt = document.createElement('option');
+            opt.value = v;
+            opt.textContent = text;
+            input.appendChild(opt);
+          }
+          input.value = P[f.key];
+        } else {
+          input = document.createElement('input');
+          input.type = f.type;
+          if (f.type === 'range') { input.min = f.min; input.max = f.max; input.step = f.step; }
+          input.value = P[f.key];
+        }
+        const apply = () => {
+          P[f.key] = f.type === 'range' ? Number(input.value) : input.value;
+          // 팩·성별이 바뀌면 선택지 자체가 달라지므로 값을 정리하고 폼을 다시 그린다
+          if (f.key === 'family' || f.key === 'gender') this.setCharParams(P);
+          else this.pushCharParams();
+        };
+        input.addEventListener('input', apply);
+        input.addEventListener('change', apply);
+        row.appendChild(input);
+        det.appendChild(row);
+      }
+      this.charForm.appendChild(det);
+    }
+  }
+
+  async saveCustomizer() {
+    const name = this.$('charName').value;
+    const extra = { photo: this.charPhoto, palette: this.charPalette }; // 사진 썸네일·색 견본도 스킨에 같이 저장
+    // 기본 제공 스킨(예: "여성 · 캐주얼")을 고친 경우는 원본을 두고 새 스킨으로 저장한다
+    const saved = this.charEditing && !this.charEditing.builtin
+      ? this.skins.updateCustom(this.charEditing.id, this.charParams, name, extra)
+      : this.skins.addCustom(name || (this.charEditing ? this.charEditing.name + ' (수정)' : ''), this.charParams, extra);
+    this.charPanel.classList.add('hidden');
+    this.charEditing = null;
+    this.refresh();
+    await this.select(saved); // 저장본으로 다시 불러와 선택 상태를 맞춘다
+    this.onPanelsChanged?.();
+  }
+
+  async cancelCustomizer() {
+    this.charPanel.classList.add('hidden');
+    this.charEditing = null;
+    const prev = this.skins.get(this.charPrevId);
+    this.refresh();
+    await this.select(prev);
+    this.onPanelsChanged?.();
   }
 
   refresh() {
@@ -98,6 +363,20 @@ export class UI {
       btn.disabled = this.busy;
       btn.addEventListener('click', () => this.select(skin));
       row.appendChild(btn);
+      if (skin.format === 'qchar' || skin.format === 'custom') {
+        const cust = document.createElement('button');
+        cust.className = 'edit';
+        cust.title = '외모 고치기';
+        cust.textContent = '👤';
+        cust.addEventListener('click', () => this.openCustomizer(skin));
+        row.appendChild(cust);
+      }
+      const edit = document.createElement('button');
+      edit.className = 'edit';
+      edit.title = '이름 바꾸기';
+      edit.textContent = '✎';
+      edit.addEventListener('click', () => this.startRename(row, btn, skin));
+      row.appendChild(edit);
       if (!skin.builtin) {
         const del = document.createElement('button');
         del.className = 'del';
@@ -115,6 +394,32 @@ export class UI {
     }
   }
 
+  // 이름 버튼을 입력창으로 바꾼다. Enter 로 저장, Esc 로 취소, 비우면 원래 이름
+  startRename(row, btn, skin) {
+    const input = document.createElement('input');
+    input.className = 'rename';
+    input.value = skin.name;
+    input.placeholder = '비우면 원래 이름';
+    let done = false;
+    const finish = async (save) => {
+      if (done) return;
+      done = true;
+      if (save) {
+        const updated = await this.skins.rename(skin.id, input.value);
+        this.toast('이름을 "' + updated.name + '" 으로 바꿨어요');
+      }
+      this.refresh();
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') finish(true);
+      if (e.key === 'Escape') finish(false);
+    });
+    input.addEventListener('blur', () => finish(true));
+    row.replaceChild(input, btn);
+    input.focus();
+    input.select();
+  }
+
   async select(skin) {
     if (this.busy) return;
     this.busy = true;
@@ -126,17 +431,27 @@ export class UI {
       this.toast(skin.name + ' 적용됨');
     } catch (err) {
       console.error(err);
-      this.toast('스킨 로드 실패: ' + (err.message || err), 5000);
+      this.toast('스킨 로드 실패: ' + friendlyLoadError(err), 7000);
     }
     this.busy = false;
     this.refresh();
   }
 
+  // 추가할 때 붙일 이름 (입력칸). 읽고 나면 비운다
+  takeName() {
+    const el = this.$('skinName');
+    const name = el.value;
+    el.value = '';
+    return name;
+  }
+
   async addFiles(files) {
+    // 이름은 파일을 하나만 넣을 때 쓴다 (여러 개면 각자 파일 이름)
+    const name = files.length === 1 ? this.takeName() : '';
     let last = null;
     for (const file of files) {
       try {
-        last = await this.skins.addFile(file);
+        last = await this.skins.addFile(file, name);
       } catch (err) {
         this.toast(file.name + ': ' + err.message, 4000);
       }
@@ -150,7 +465,7 @@ export class UI {
   addUrl() {
     const url = this.$('skinUrl').value;
     try {
-      const skin = this.skins.addUrl('', url);
+      const skin = this.skins.addUrl(this.takeName(), url);
       this.$('skinUrl').value = '';
       this.refresh();
       this.select(skin);
@@ -212,7 +527,7 @@ export class UI {
     clearTimeout(this._hitTimer);
     this._hitTimer = setTimeout(() => this.crosshair.classList.remove('hit'), 120);
     const el = this.hitPop;
-    el.textContent = `+${score}`;
+    el.textContent = typeof score === 'number' ? `+${score}` : score; // 숫자면 점수, 문자열이면 그대로 (동물 명중)
     el.classList.remove('hidden');
     el.style.animation = 'none';
     void el.offsetWidth; // 애니메이션 재시작
@@ -299,6 +614,14 @@ export class UI {
 
   setMode(text) {
     this.$('mode').textContent = text;
+  }
+
+  // 인벤토리 (고기)
+  setInventory({ raw, cooked }) {
+    const text = `생고기 ${raw} · 익힌 고기 ${cooked}`;
+    const el = this.$('inv');
+    if (el.textContent !== text) el.textContent = text;
+    el.classList.toggle('hidden', raw === 0 && cooked === 0);
   }
 
   setRoom(name) {

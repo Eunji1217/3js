@@ -1,11 +1,12 @@
 # Room Sim 으로 배우는 three.js
 
-이 프로젝트는 three.js 로 만든 "방 세 개짜리(침실·거실·사격장) 3인칭/1인칭 시뮬레이션"입니다.
-코드가 2,500줄 정도로 작아서 three.js 입문 교재로 쓰기 좋습니다.
+이 프로젝트는 three.js 로 만든 "집(침실·거실·주방·사격장)과 마당, 그리고 울타리 밖 들판에서 동물을 사냥하는 3인칭/1인칭 시뮬레이션"입니다.
+코드가 4,500줄 정도로 작아서 three.js 입문 교재로 쓰기 좋습니다.
 이 문서는 **기본 개념 → 실습 → 다음 단계** 순서로 따라가는 튜토리얼입니다.
 
 - **1부 (1~9단계)**: 방·문·캐릭터·카메라를 만드는 three.js 기본 (약 1,300줄)
-- **2부 (10~16단계)**: 1부 개념을 조합해 무기·사격장·조준경·효과음을 만드는 응용 (약 1,200줄)
+- **2부 (10~20단계)**: 1부 개념을 조합해 무기·사격장·조준경·효과음·캐릭터 커스텀·칼 모션·연습 게임·사진 색 추출을 만드는 응용 (약 2,000줄)
+- **3부 (21~26단계)**: 공개 에셋(Kenney·Quaternius CC0 키트)으로 집을 꾸미고, 집 밖 세상(땅·울타리·숲)과 동물·사냥·요리, 진행 저장, 남/여 의상 조립 캐릭터를 만드는 확장 (약 1,300줄)
 
 각 단계는 다음 구성으로 되어 있습니다.
 
@@ -46,9 +47,11 @@ __game.world.doors[0].toggle() // 문 열기
 | `src/input.js` | 키보드/마우스 이벤트 모음 | three.js 와 무관한 순수 DOM 코드 |
 | `src/skins.js` | 스킨 목록 저장 (localStorage, IndexedDB) | three.js 와 무관 |
 | `src/ui.js` | HUD, 토스트, 스킨/무기 패널, 조준선, 무기 휠 | three.js 와 무관 |
-| `src/range.js` (2부) | 사격장 방, 과녁, 넘어지는 표적, 무기 선반 | CanvasTexture, Group 회전축, worldToLocal, PointLight, emissive |
-| `src/weapons.js` (2부) | 무기 모델, 사격, 조준, 조준경, 3인칭 팔 자세, 탄흔/예광 | Raycaster, Object3D 부모 바꾸기, userData, Quaternion, RenderTarget, Sprite, Line |
+| `src/range.js` (2부) | 사격장 방, 과녁, 넘어지는 표적, 무기 선반, 60초 연습 게임 | CanvasTexture, Group 회전축, worldToLocal, PointLight, emissive, 상태 기계·사인파 왕복 |
+| `src/weapons.js` (2부) | 무기 모델, 사격, 조준, 조준경, 칼 베기·찌르기 모션, 3인칭 팔 자세, 탄흔/예광 | Raycaster, Object3D 부모 바꾸기, userData, Quaternion, RenderTarget, Sprite, Line, 구간 함수 모션 |
 | `src/audio.js` (2부) | 효과음 합성 | three.js 와 무관 (WebAudio) |
+| `src/qchar.js` (2부) | 모듈형 캐릭터 (Quaternius CC0 부품 조립·커스텀) | 같은 뼈대에 SkinnedMesh 다시 묶기(bind), 스킨 가중치로 지오메트리 잘라내기, 텍스처 교체·색 곱하기, 애니메이션 라이브러리 공유 |
+| `src/palette.js` (2부) | 사진에서 주요 색 뽑아 캐릭터 색에 배정 | three.js 와 무관 (Canvas getImageData, 미디언 컷, k-평균) |
 
 읽는 순서는 **main → world → door → input/player(이동) → player(충돌) → cameraRig → player(애니메이션)** 을 권장합니다.
 2부는 **range → weapons(모델·효과) → weapons(사격) → weapons(부착) → cameraRig/조준경 → poseArms → audio → main/ui** 순서입니다.
@@ -577,7 +580,10 @@ this.mixer.update(dt);
 
 - **Reflector (거울)** `world.js` 141~156행: 매 프레임 카메라를 거울 반대편으로 옮겨 장면을 한 번 더 렌더링합니다. 그래서 비용이 큽니다. `multisample: 0` 은 일부 GPU 에서 검게 나오는 문제 회피입니다.
 - **SkeletonUtils.retargetClip**: 뼈 이름 매핑, 스케일, 힙 뼈 지정이 필요합니다. 리타게팅 중 뼈를 직접 움직여서 상태를 저장/복원하는 코드가 있습니다.
-- **스킨 저장소** `skins.js`: three.js 와 무관. 파일은 IndexedDB 에 Blob 으로, 링크는 localStorage 에 저장합니다. `URL.createObjectURL(blob)` 로 로컬 파일을 로더가 읽을 수 있는 URL 로 바꿉니다.
+- **스킨 저장소** `skins.js`: three.js 와 무관. 파일은 IndexedDB 에 Blob 으로, 링크는 localStorage 에 저장합니다. `URL.createObjectURL(blob)` 로 로컬 파일을 로더가 읽을 수 있는 URL 로 바꿉니다. 이름 바꾸기(`rename`)는 저장 위치에 따라 세 갈래입니다: 파일 스킨은 IndexedDB 레코드, 링크 스킨은 localStorage 목록, 기본/폴더 스킨은 별명 맵(`roomsim.skinNames`)에 저장합니다.
+- **Mixamo 뼈 이름**: `mixamorig:Hips` 가 보통이지만 가끔 `mixamorig6:Hips` 처럼 숫자가 붙어 나옵니다. FBXLoader 가 `:` 을 지우므로 `player.js` 의 `getBoneName` 은 `^mixamorig\d*:?` 를 떼고 비교합니다. 이걸 놓치면 리타게팅 트랙이 거의 비어 캐릭터가 굳어 보입니다.
+- **뼈대가 두 벌인 FBX**: 어떤 캐릭터는 같은 이름의 뼈대가 두 벌 들어 있고 몸과 신발이 서로 다른 쪽에 묶여 있습니다. 애니메이션 트랙은 이름으로 뼈를 찾으므로 한 벌만 움직이고 나머지 메시는 찌그러집니다. `player.js` 의 `unifySkeletons` 가 가장 큰 메시의 뼈대를 기준으로 다른 메시를 다시 묶고(`bind`), 남는 중복 뼈는 이름을 바꿔 트랙이 붙지 않게 합니다.
+- **뼈 목록 순서**: `retargetClip` 은 `skeleton.bones` 순서대로 뼈의 월드 행렬을 갱신하므로 **부모가 자식보다 먼저** 와야 합니다. FBX 는 이 순서를 보장하지 않아서(어떤 캐릭터는 Head 가 0번, Neck 이 37번) 다리·엉덩이가 뒤틀린 채 나옵니다. 그래서 `retargetClips` 는 `model.traverse` 순서(항상 부모→자식)로 뼈를 다시 모은 Skeleton 을 만들어 넘깁니다. 스킨 메시의 뼈 목록에 빠진 뼈(손가락 끝 등)도 이때 같이 들어갑니다.
 - **Vite 의 `import.meta.glob`**: `src/skins/` 폴더의 파일을 빌드 시 자동으로 찾아 URL 로 만듭니다.
 
 ---
@@ -597,7 +603,7 @@ __game.setMode('first')                  // 1인칭
 __game.weapons.stats                     // { score, shots, hits }
 ```
 
-조작: **좌클릭** 사격 · **우클릭** 조준 · **우클릭 두 번** 배율 전환 · **R** 재장전 · **1~5 / 휠 / T** 무기 선택 · **X** 맨손
+조작: **좌클릭** 사격 / 칼 베기 · **우클릭** 조준 / 칼 찌르기 · **우클릭 두 번** 배율 전환 · **R** 재장전 · **1~5 / 휠 / T** 무기 선택 · **X** 맨손 · **G** 연습 게임 (사격장 안, 60초)
 
 ---
 
@@ -717,7 +723,7 @@ d.copy(dir).addScaledVector(side, Math.cos(a) * r).addScaledVector(up, Math.sin(
 1. 탄약 감소, 쿨다운 `60 / rpm` 초, 통계 증가
 2. `aimRay` 로 원점·방향·near 계산, `muzzleWorld` 로 총구 위치(예광 시작점)
 3. 산탄 수만큼: 퍼짐 적용 → 광선 → 맞으면 표적 점수 판정 + 탄흔, 안 맞으면 80m 앞을 끝점으로 → 예광
-4. 명중했으면 통계·HUD, 총구 섬광, 소리, 반동(13단계)
+4. 명중했으면 통계·HUD, 총구 섬광, 소리, 반동(13단계). 통계(`countShot`/`countHit`)는 `world.roomAt()` 으로 현재 방을 확인해 **사격장 안에서만** 기록합니다
 
 **탄흔을 표적에 붙이기** (`Effects.hole`, 221~236행): `parent` 가 있으면 `parent.add(h)` 하고 `worldToLocal` 로 위치를 바꿉니다. 그래서 표적이 넘어가도 탄흔이 같이 넘어갑니다. 4단계 부모-자식의 응용입니다.
 
@@ -872,14 +878,17 @@ Quaternion 은 회전을 표현하는 4개 숫자입니다. Euler(`rotation`)보
 
 **2뼈 체인**: 상완(RightArm)을 먼저 돌리고, 바뀐 위치 기준으로 전완(RightForeArm)을 돌립니다. 각 단계 뒤 `updateMatrixWorld` 를 안 하면 전완이 이전 프레임의 상완 위치로 계산되어 떨립니다. 이건 역운동학(IK)이 아니라 뼈 하나씩 목표를 보게 하는 단순한 방법입니다. 그래도 "총을 겨누는" 느낌은 충분히 납니다.
 
-**블렌딩 가중치**: `poseW` 를 0↔1 로 부드럽게 바꿔 조준을 시작/해제할 때 팔이 튀지 않게 합니다. 칼 휘두르기는 진행도 `prog`(0→1)에 따라 가중치를 삼각형 모양(0→1→0)으로 올렸다 내려서 시작과 끝이 애니메이션과 섞이게 합니다.
+**블렌딩 가중치**: `poseW` 를 0↔1 로 부드럽게 바꿔 조준을 시작/해제할 때 팔이 튀지 않게 합니다. 칼 공격은 진행도 `prog`(0→1)에 따라 가중치를 사다리꼴 모양(0→1→…→0)으로 올렸다 내려서 시작과 끝이 애니메이션과 섞이게 합니다.
 
-**칼 궤적** (610~628행): 진행도를 `Math.pow(t, 1.6)` 으로 가속시키고, "뒤·위 60도" 에서 "앞·아래 30도" 로 목표 방향을 보간합니다. 벡터 두 개 사이를 섞는 것만으로 호를 그립니다.
+**칼 궤적** (`poseArms` 의 `swinging` 분기): 팔이 향할 **목표점** 하나만 정하면 `aimBone` 이 나머지를 해 줍니다.
+- 베기: 어깨에서 "앞 0.75 + 오른쪽 0.9" 방향(준비)에서 "앞 0.75 + 왼쪽 1.0" 방향(타격)으로 `right` 성분만 바꿔 호를 그립니다. 벡터 두 개를 섞는 것만으로 가로 베기가 됩니다.
+- 찌르기: 목표점을 "허리 옆·뒤의 한 점"(준비)에서 "조준점"(타격)으로 `lerp` 합니다. 조준점은 11단계의 Raycaster 로 구한 실제 맞을 자리라서 팔이 정확히 그쪽으로 뻗습니다.
+- 진행도를 구간 함수로 나누는 방법은 18단계에서 자세히 다룹니다.
 
 ### 실습
 
 1. `this.poseW += ... * Math.min(1, dt * 10)` 의 `10` 을 `1` 로 줄이면 조준 자세가 천천히 잡힙니다.
-2. 칼 가중치 `w = Math.min(1, prog / 0.1, (1 - prog) / 0.1)` 을 `w = 1` 로 바꾸면 시작·끝이 뚝 끊깁니다.
+2. 칼 가중치 `w = Math.min(1, prog / 0.1, (1 - prog) / 0.15)` 을 `w = 1` 로 바꾸면 시작·끝이 뚝 끊깁니다.
 3. `aimBone(b.rArm, ...)` 과 `aimBone(b.rFore, ...)` 의 순서를 바꿔 보세요. 팔이 꺾입니다.
 4. `bone.updateMatrixWorld(true)` 를 주석 처리하고 조준 중에 돌아보세요. 전완이 떨립니다.
 5. 왼손 받침 위치 `addScaledVector(dir, 0.3)` 을 `0.8` 로 바꿔 보세요.
@@ -969,6 +978,420 @@ three.js 와 무관하지만 "게임답게" 느껴지는 데 가장 큰 영향�
 
 ---
 
+## 17단계. 모듈형 캐릭터 조립과 커스터마이저 (`src/qchar.js`)
+
+### 개념
+
+스킨 패널의 **"내 캐릭터 만들기"** 는 Quaternius 가 CC0(퍼블릭 도메인)로 공개한 모듈형 캐릭터 팩을 조립합니다. 파일은 `public/models/q/` 에 있습니다.
+
+| 폴더 | 내용 |
+|---|---|
+| `body/` | 기본 몸 2종 (남/여). 몸·눈·눈썹이 각각 SkinnedMesh |
+| `hair/` | 머리 스타일 5종, 수염, 눈썹 2종 |
+| `parts/` | 의상 부위별 부품 (농부/레인저 × 상의·소매·하의·신발 + 후드·어깨 보호대) |
+| `anim/` | 애니메이션 43개가 든 GLB (Idle_Loop, Walk_Loop, Jog_Fwd_Loop, Jump_*, Pistol_*, Punch_* …) |
+| `tex/` | 텍스처. 원본 2048 을 웹용으로 1024/512 로 줄였음 |
+
+이 방식이 되는 이유는 하나입니다. **모든 파일이 똑같은 65개 뼈(root, pelvis, spine_01 … hand_r)를 씁니다.** 같은 뼈대라서 부품을 기본 몸의 Skeleton 에 "다시 묶기"만 하면 되고, 애니메이션도 리타게팅(8단계) 없이 그대로 재생됩니다. 공개 아바타 제작기인 CharacterStudio 도 같은 원리로 부품을 통째로 갈아 끼웁니다.
+
+**SkinnedMesh 다시 묶기** (`attach`): 부품 glTF 를 불러오면 부품도 자기 뼈대(Armature)를 들고 옵니다. 그 뼈대는 버리고 메시만 떼어 기본 몸 옆에 넣은 뒤 `bind()` 로 기본 몸의 Skeleton 을 가리키게 합니다.
+
+```js
+m.removeFromParent();
+this.bodyMesh.parent.add(m);        // 기본 몸의 Armature 아래로
+m.bind(this.skeleton, m.bindMatrix); // 이제 기본 몸의 뼈가 움직이면 부품도 움직인다
+```
+
+뼈 **순서**가 다를 수 있어서 `skinIndex` 속성의 번호를 이름 기준으로 바꿔 끼우는 코드가 함께 있습니다. (GLTFLoader 는 glTF 의 `JOINTS_0` 을 `skinIndex`, `WEIGHTS_0` 을 `skinWeight` 로 이름을 바꿔 넣습니다.)
+
+**옷 밖으로 삐져나오는 살 잘라내기** (`cutGeometry`): 기본 몸은 한 덩어리라 옷을 입히면 어깨·허벅지가 옷을 뚫고 나옵니다. 그래서 의상 부위가 덮는 뼈(예: 하의는 `thigh_*`, `calf_*`)에 가장 큰 가중치로 묶인 정점을 가진 삼각형을 **인덱스 버퍼에서 빼서** 새 지오메트리를 만듭니다. 정점 데이터는 그대로 두고 삼각형 목록만 줄이는 것이라 빠릅니다.
+
+```js
+for (let k = 0; k < 4; k++) {                 // 정점마다 뼈 4개 중 가중치가 제일 큰 뼈
+  const w = weights.getComponent(i, k);
+  if (w > bw) { bw = w; best = joints.getComponent(i, k); }
+}
+if (removeRes.some((re) => re.test(boneNames[best]))) bad[i] = 1;
+// 세 정점 중 하나라도 bad 면 그 삼각형은 버린다
+```
+
+**텍스처 교체와 색 곱하기**: 피부는 밝은/어두운 텍스처 두 장 중 하나를 `material.map` 에 넣고 `material.color` 를 곱해 톤을 만듭니다. 머리·의상 색도 `color` 곱하기입니다. 직접 불러온 텍스처는 `flipY = false`, `colorSpace = SRGBColorSpace` 로 맞춰야 glTF 텍스처와 같은 방향·색으로 나옵니다.
+
+**뼈 이름 별명** (`BONE_ALIAS`): 무기(12단계)와 조준 자세(14단계)는 Mixamo 이름(`RightHand`)으로 뼈를 찾습니다. 이 리그는 `hand_r` 이라서 `player.getBone` 이 못 찾으면 별명 표로 한 번 더 찾습니다. 코드 한 줄로 두 리그가 공존합니다.
+
+**비동기 조립**: 부품은 네트워크에서 오므로 슬라이더를 빨리 움직이면 요청이 겹칩니다. `version` 번호로 늦게 끝난 요청을 버리고(`qchar.js`), UI 쪽은 Promise 체인으로 직렬화합니다(`ui.js` 의 `pushCharParams`).
+
+### 코드
+
+`apply(params)` 의 흐름:
+
+1. 성별이 바뀌었으면 기본 몸을 새로 불러와 복제 (`loadBody`)
+2. 부위(slot)마다 원하는 파일을 정하고, 이미 붙어 있으면 색만, 아니면 떼고 새로 붙임 (`attach` / `detach`)
+3. 피부 텍스처·색, 눈 색, 기본 눈썹 숨김
+4. 의상이 덮는 뼈 그룹으로 기본 몸 잘라내기 (결과는 `cutKey` 로 캐시)
+5. 키는 루트 `scale`
+
+`player.js` 쪽은 `setCustom` 이 기본 몸과 애니메이션을 함께 불러와 `installModel` 로 끼우고, 성별이 바뀌어 모델이 새로 만들어지면 `installQChar` 로 믹서를 다시 만듭니다.
+
+### 실습
+
+1. **새 애니메이션 쓰기**: `QuaterniusCharacter.loadClips` 에서 `run` 을 `Sprint_Loop` 으로 바꿔 보세요. 43개 이름은 `__game.player.qClips.all.map(c => c.name)` 으로 볼 수 있습니다.
+2. `cutGeometry` 호출을 주석 처리하고 레인저 옷을 입혀 보세요. 어깨와 허벅지가 옷을 뚫고 나옵니다.
+3. `COVER.legs` 정규식에서 `calf` 를 빼면 종아리 살이 바지 안에 남습니다. 꽉 끼는 바지에서 어떻게 보이는지 확인하세요.
+4. `loadTex` 의 `flipY = false` 를 지우면 피부 텍스처가 위아래로 뒤집혀 얼굴이 엉뚱해집니다.
+5. 피부 프리셋 `SKINS` 에 `{ tex: 'light', tint: '#c7d8ff' }` 같은 푸른 피부를 추가해 보세요. `SCHEMA` 는 `SKINS` 에서 자동으로 만들어집니다.
+6. `tint()` 에서 `MI_Regular_*` 재질을 제외하는 줄을 지우면 소매 색을 바꿀 때 맨손까지 같이 칠해집니다. 왜 제외했는지 보입니다.
+7. `attach` 에서 `m.bind(...)` 줄을 주석 처리해 보세요. 부품이 T 자 자세로 굳습니다.
+
+### 확인
+
+- 부품 glTF 마다 들어 있는 Armature 를 왜 버려도 되나요?
+- `cutGeometry` 가 정점을 지우지 않고 인덱스만 줄이는데도 메시가 작아 보이는 이유는?
+- Mixamo 캐릭터(8단계)는 리타게팅이 필요했는데 이 캐릭터는 왜 필요 없나요?
+
+---
+
+## 18단계. 키프레임 없이 만드는 공격 모션: 구간 함수와 지연 판정 (`animateKnife`, `startAttack`)
+
+### 개념
+
+**애니메이션 파일 없이 모션 만들기.** 칼 베기·찌르기는 Mixamo 클립이 아니라 **진행도(0→1)를 받아 위치·회전을 돌려주는 함수**입니다. 매 프레임 `prog = 1 - swingT / dur` 를 구해 `animateKnife(prog)` 에 넣으면 그 순간의 자세가 나옵니다. 8단계의 AnimationMixer 가 "파일에 적힌 키프레임을 보간"한다면, 이건 "수식으로 키프레임을 대신"하는 것입니다. 짧고 단순한 동작(반동, 휘두르기, 흔들림)은 이 방식이 훨씬 가볍습니다.
+
+**구간 함수 `seg`** (`weapons.js` 상단):
+
+```js
+const seg = (p, a, b) => clamp((p - a) / (b - a), 0, 1);  // p 가 a~b 를 지나는 동안 0→1
+const easeOut = (t) => 1 - (1 - t) ** 3;                   // 빠르게 시작해 천천히 멈춤
+const easeInOut = (t) => t * t * (3 - 2 * t);              // 양끝이 부드러움
+```
+
+한 동작을 **준비 → 타격 → 유지 → 복귀** 구간으로 나누고, 구간마다 `seg` 로 0→1 값을 하나씩 뽑습니다. 찌르기라면:
+
+```js
+const back = easeInOut(seg(prog, 0, 0.3));     // 0~30%: 뒤로 당김 (0→1 로 올라가서 1 유지)
+const out = easeOut(seg(prog, 0.3, 0.46));     // 30~46%: 앞으로 뻗음 (빠르게)
+const hold = 1 - easeInOut(seg(prog, 0.62, 1)); // 62% 까지 1, 그 뒤 0 으로 (복귀)
+const dz = (0.09 * back - 0.44 * out) * hold;  // 뒤로 9cm 갔다가 앞으로 44cm, 마지막에 0 으로
+view.position.z = rest.z + dz;
+```
+
+`back` 은 구간이 끝나도 1 로 남아 있다는 점이 핵심입니다. 그래서 "당긴 자세를 유지한 채로" 다음 구간 `out` 이 덧붙고, 마지막에 `hold` 가 0 이 되면 전부 제자리로 돌아옵니다. 변수 몇 개를 곱하고 더하는 것만으로 복합 동작이 나옵니다.
+
+**베기 vs 찌르기 (서든어택식)**: 좌클릭 베기는 0.3초, 오른쪽에서 왼쪽으로 가로지르며 `rotation.z = -1.4` 로 칼날을 눕힙니다. 우클릭 찌르기는 0.62초, 뒤로 당겼다가 화면 중앙으로 깊게 뻗고(사거리 2.3m, 10점) 쿨다운이 깁니다. 무기 정의의 `stab: { cool, reach, score }` 가 그 수치입니다.
+
+**판정은 "닿는 순간"에**: 예전 코드는 클릭 즉시 `meleeHit` 을 불렀습니다. 그러면 칼이 아직 뒤에 있는데 점수가 들어가서 때리는 느낌이 안 납니다. 지금은 `startAttack` 이 `pendingHit = { at: dur * (1 - hitAt), ... }` 만 적어 두고, `update` 에서 `swingT <= at` 이 되는 프레임에 판정합니다 (`ATTACKS[kind].hitAt` 이 0.42/0.46 = 칼이 가장 앞에 있는 순간). 맞으면 `rig.kick` 으로 화면을 살짝 튕기고 `playHitThud` 로 '턱' 소리를 내서 타격감을 더합니다 (13단계 반동과 같은 장치).
+
+**1인칭·3인칭이 같은 타이머를 공유**: `swingT`/`attack` 은 하나인데, 1인칭은 `animateKnife` 가 카메라에 붙은 모델을, 3인칭은 `poseArms` 가 팔 뼈를 움직입니다 (14단계). 시점을 바꿔도 동작 타이밍이 어긋나지 않습니다.
+
+### 실습
+
+1. `ATTACKS.stab.dur` 을 `1.2` 로 늘려 느린 동작으로 구간이 어떻게 이어지는지 관찰하세요.
+2. `hitAt` 을 `0` 으로 바꾸면 클릭 즉시 판정됩니다. 표적 바로 앞에서 찔러 보고 차이를 느껴 보세요.
+3. 베기의 `rotation.z = -1.4 * flat` 을 `0` 으로 바꾸면 칼날이 세로로 선 채 움직입니다. 왜 눕혀야 "베는" 느낌이 날까요?
+4. 찌르기에 `view.rotation.z` 대신 `rotation.y` 를 조금 더해 칼이 비틀리며 들어가게 해 보세요.
+5. 콘솔에서 자세를 고정해 보세요 (스크린샷용으로 쓴 방법입니다):
+   ```js
+   const w = __game.weapons; w.attack = 'stab'; w.swingT = 100;
+   Object.defineProperty(w, 'attackProgress', { configurable: true, get: () => 0.5 });
+   // 되돌리기: delete w.attackProgress; w.swingT = 0; w.attack = null;
+   ```
+6. 주먹(`punch`)도 같은 구조입니다. `ATTACKS.punch.hitAt` 을 바꿔 보세요.
+
+### 확인
+
+- `back` 이 구간이 끝난 뒤 0 으로 돌아간다면 찌르기 동작이 어떻게 보일까요?
+- 판정을 미루는 대신 "동작 시작 때 판정하고 효과만 늦게" 보여 주면 무엇이 달라질까요? (움직이는 표적을 생각해 보세요)
+- `hold` 를 곱하지 않으면 동작 끝에 칼이 어디에 있을까요?
+
+---
+
+## 19단계. 연습 게임: 상태 기계, 타이머, 움직이는 표적 (`src/range.js` 의 `game`, `update`)
+
+### 개념
+
+**상태 기계(state machine)**: 게임은 `idle → countdown → running → over → idle` 네 상태를 돕니다. 상태마다 할 일이 다르고(카운트다운은 숫자만 세고, running 만 표적을 움직이고 점수를 받고), 전이는 정해진 곳에서만 일어납니다(`startGame`, `stopGame`, `dismissGame`, `update` 의 시간 만료). "지금 게임 중인가?"를 불리언 여러 개로 관리하면 금방 꼬이는데, 상태 하나로 모으면 UI 도 `game.state` 만 보면 됩니다.
+
+**타이머는 dt 누적**: `game.time -= dt` 가 전부입니다. 1단계 `Clock` 의 `dt` 는 프레임마다 다르므로 "프레임 수를 센다"가 아니라 "경과 시간을 뺀다"가 옳습니다. 카운트다운 소리는 `Math.ceil(time)` 이 바뀌는 프레임에만 울립니다 (`lastBeep` 으로 중복 방지).
+
+**사인파 왕복** (`update`):
+
+```js
+t.phase += dt * speed / MOVE_AMP;                 // 위상 속도 = 선속도 ÷ 진폭
+t.pivot.position.z = t.homeZ + MOVE_AMP * Math.sin(t.phase);
+```
+
+위치를 시간의 함수로 직접 쓰지 않고 **위상을 누적**하는 이유는 속도를 도중에 바꿔도(뒤로 갈수록 1.6배까지 빨라짐) 표적이 튀지 않게 하기 위해서입니다. `z = sin(speed * elapsed)` 로 쓰면 `speed` 가 바뀌는 순간 위치가 점프합니다. 레인마다 `phase` 초깃값과 속도를 다르게 줘서 세 표적이 제각각 움직입니다. 게임이 끝나면 `homeZ` 로 보간해 돌아옵니다 (7단계 패턴).
+
+**모듈 사이의 연결**: 점수는 `weapons.countHit` 이 알고, 게임 상태는 `range` 가 압니다. `weapons` 가 `range.onHit(score)` 를 호출하고 `range` 는 `running` 일 때만 더합니다. 전체 누적 점수(`weapons.stats`)와 이번 판 점수(`game.score`)를 분리한 덕에 게임이 끝나도 연습 기록은 남습니다. `main.js` 는 G 키·버튼·결과 창 "다시 시작"을 전부 `toggleGame` 하나로 받습니다 (16단계 입력 우선순위의 연장).
+
+**UI 는 매 프레임 상태를 읽기만**: `ui.setGame(game)` 이 매 프레임 불리지만 DOM 은 문자열이 바뀐 프레임에만 건드립니다. 결과 창은 `state` 가 `over` 로 **바뀌는 순간** 한 번만 엽니다 (이전 상태를 `_game.state` 에 기억). 최고 기록은 `localStorage` 에 저장합니다 (9단계 skins 와 같은 저장소).
+
+### 실습
+
+1. `GAME_TIME` 을 `30` 으로, `COUNTDOWN` 을 `1` 로 바꿔 짧은 게임을 만들어 보세요.
+2. `MOVE_SPEED` 를 전부 `3` 으로 올리고 저격총으로 맞춰 보세요. 움직이는 표적에는 어떤 무기가 유리한가요?
+3. 속도 증가 `1 + 0.6 * (...)` 을 `1 + 2 * (...)` 로 바꿔 막판을 어렵게 해 보세요.
+4. 위상 누적 대신 `z = homeZ + AMP * Math.sin(elapsed * speed)` 로 바꾸고 속도 증가가 켜진 상태에서 표적이 떨리는지 관찰하세요.
+5. 표적이 앞뒤(x)로도 움직이게 `pivot.position.x` 에 작은 사인파를 더해 보세요. 점수 판정(`worldToLocal`)이 그대로 맞는 이유는 10단계에 있습니다.
+6. `GAME_DOWN_TIME` 을 `0.2` 로 줄여 연사 무기로 점수를 쓸어 담아 보세요.
+7. 상태를 하나 추가해 보세요: `paused`. P 키로 `running ↔ paused` 를 오가며 `update` 에서 시간이 멈추게.
+
+### 확인
+
+- `onHit` 이 `running` 을 확인하지 않으면 카운트다운 중에 쏜 점수는 어떻게 될까요?
+- `stopGame` 이 `countdown` 상태에서도 호출되는 이유는?
+- 결과 창을 `state === 'over'` 인 동안 매 프레임 `toggleGamePanel(true)` 로 열면 무슨 문제가 생길까요? (`onPanelsChanged` 가 하는 일을 떠올리세요)
+
+---
+
+## 20단계. 사진에서 색 뽑아 캐릭터에 입히기 (`src/palette.js`, Canvas 픽셀 처리)
+
+### 개념
+
+three.js 코드는 아니지만 게임에서 자주 쓰는 **이미지 → 데이터** 처리입니다. 커스터마이저의 "📷 사진으로 색 맞추기"는 jpg/png 를 읽어 주요 색 6개를 뽑고 상의·하의·소매·신발·머리색에 배정합니다.
+
+**픽셀 읽기** (`extractPalette`): `<img>` 로 파일을 열고 `<canvas>` 에 48×48 로 **축소해서** 그린 뒤 `getImageData` 로 RGBA 배열을 받습니다. 원본 크기로 읽으면 수백만 픽셀을 돌아야 하지만 48×48 이면 2,304개면 충분합니다. 10단계 CanvasTexture 가 "캔버스에 그려서 텍스처로" 였다면 이건 "캔버스에 그려서 숫자로" 입니다. 투명 픽셀(alpha < 128)은 png 배경이므로 뺍니다.
+
+**미디언 컷(median cut)**: 색 수를 줄이는 고전 알고리즘입니다. 모든 픽셀을 상자 하나에 넣고, "R/G/B 중 범위가 가장 넓은 채널"의 중앙값에서 반으로 쪼개기를 상자가 6개가 될 때까지 반복합니다. 상자마다 평균을 내면 대표색이 됩니다. 쪼갤 상자를 "픽셀이 많은 것"으로 고르면 단색 큰 영역이 둘로 갈라지므로 "색 범위가 넓은 것"으로 고릅니다.
+
+**k-평균 다듬기(`refine`)**: 미디언 컷은 경계가 거칠어서(파랑과 흰색이 한 상자에 섞이면 연보라가 나옴) 그 결과를 시작점으로 "픽셀을 가장 가까운 대표색에 배정 → 평균 다시 계산"을 4번 돌립니다. 그리고 거리 28 미만인 비슷한 색은 합칩니다(`dedupe`).
+
+**색 배정 규칙** (`paletteToParams`): HSL 의 밝기(l)와 채도(s)로 역할을 정합니다. 너무 밝거나(l > 0.92, 흰 배경) 어두운(l < 0.12) 색은 옷 후보에서 빼고, `개수 × (0.4 + 채도)` 점수가 높은 색이 상의, 상의와 RGB 거리가 가장 먼 색이 하의, 가까운 색이 소매, 가장 어두운 색이 신발·머리입니다. 17단계의 색 **곱하기** 방식 때문에 아주 어두운 색은 옷 무늬가 사라지므로 `lift` 로 밝기 하한을 둡니다.
+
+**저장**: 썸네일(96px JPEG dataURL, 약 3KB)과 색 견본을 스킨 기록에 같이 넣어 localStorage 에 저장합니다. 다시 열면 썸네일과 견본이 복원되고, 견본을 클릭하면 상의 색으로 바로 씁니다. 드래그앤드롭은 16단계의 창 전체 drop 핸들러를 재사용하되, 커스터마이저가 열려 있고 이미지면 사진 처리로, 아니면 기존 .glb/.fbx 추가로 보냅니다.
+
+### 실습
+
+1. `SAMPLE` 을 `8` 로 줄여 보세요. 색이 뭉개집니다. `256` 으로 올리면 결과는 비슷한데 느려지나요?
+2. `COLORS` 를 `3` 과 `12` 로 바꿔 견본이 어떻게 달라지는지 보세요.
+3. `refine` 호출을 빼고(`dedupe(medianCut(...))`) 파랑+흰 배경 사진을 넣어 연보라가 나오는지 확인하세요.
+4. 눈 색도 자동으로 정해 보세요. 채도가 낮고 어두운 색을 `eyeColor` 로.
+5. 콘솔에서 직접 써 보세요: `import('/src/palette.js').then(m => m.extractPalette('/models/q/tex/T_Superhero_Male_Light.png').then(console.log))`
+6. 가장 많이 쓰인 색을 **배경**으로 간주해 빼는 규칙을 추가해 보세요 (인물 사진은 배경이 제일 넓습니다).
+
+### 확인
+
+- 평균색을 낼 때 RGB 를 그냥 평균하면 왜 빨강+파랑이 보라가 아니라 칙칙한 회보라가 될까요? (감마와 선형 색 공간, 10단계 `colorSpace` 와 같은 주제)
+- `dedupe` 를 k-평균 **앞**에 두면 무슨 문제가 생길까요?
+- 상의 색을 "가장 많이 쓰인 색"으로만 정하면 인물 사진에서 무엇이 뽑힐까요?
+
+---
+
+
+# 3부. 공개 에셋으로 세상 넓히기
+
+## 21단계. 외부 glTF 에셋 불러와 배치하기 (`src/furniture.js`, `world.js` 의 가구)
+
+### 개념
+
+2단계에서 박스로 만들던 가구를 **Kenney Furniture Kit**(CC0, https://kenney.nl/assets/furniture-kit) 의 glTF 모델로 바꿨습니다. 파일은 `public/models/kenney/` 에 있고, 주방 가구(싱크대·가스레인지·냉장고·상부장·전자레인지 등)도 같은 키트입니다. 8단계에서 캐릭터 한 개를 불러왔다면, 이번엔 **작은 모델 수십 개를 좌표에 맞춰 놓는** 일입니다. 세 가지 문제를 풀어야 합니다.
+
+**1. 단위가 다르다.** 키트는 미터가 아닙니다 (의자 높이 0.61, 더블 침대 폭 0.96). 캐릭터(약 1.8m)와 비율이 맞도록 `KENNEY_SCALE = 2.2` 를 곱합니다. Nature Kit 은 울타리 한 칸이 1 단위라 2.5 를 씁니다. 처음 보는 키트는 바운딩 박스부터 재 보세요 (실습 1).
+
+**2. 원점이 제각각이다.** 어떤 모델은 바닥 모서리가 원점이고(책상: x 0~0.73, z -0.38~0), 어떤 모델은 중심이 원점입니다(TV: x -0.34~0.34). 그래서 `place()` 는 "원하는 좌표에 바로 놓기"가 아니라 **"일단 넣고 → `Box3.setFromObject` 로 재고 → 바닥 중심이 (x, y, z) 가 되게 옮기기"** 를 합니다.
+
+```js
+obj.updateMatrixWorld(true);
+const box = new THREE.Box3().setFromObject(obj);
+const c = box.getCenter(new THREE.Vector3());
+obj.position.set(x - c.x, y - box.min.y, z - c.z); // 바닥(min.y)이 y 에, 중심이 (x, z) 에
+```
+
+반환값의 `box` 는 월드 좌표의 바운딩 박스라 **위에 뭔가 올릴 때** 그대로 씁니다: `P('laptop', x, z, { y: desk.box.max.y })`. 침대 매트리스처럼 "상자 꼭대기"가 아닌 높이는 모델 안쪽 값이라 따로 잽니다 (`mattress = bed.box.min.y + 0.25 * KENNEY_SCALE`).
+
+**3. 비동기다.** 모델은 네트워크에서 오므로 `createWorld()` 가 끝난 뒤에 도착합니다. 그래서 `place()` 는 `colliders` / `shootables` 배열에 **도착하는 대로 push** 하고, 플레이어(`world.allColliders()`)와 총알(`world.shootables`)은 매 프레임 배열을 다시 읽으므로 늦게 추가돼도 그 순간부터 막히고 맞습니다. 순서가 중요한 것(책상 위 노트북)은 `await` 로 잇고, 전체 완료는 `world.furnitureReady` 프로미스로 알 수 있습니다.
+
+**clone 과 재질 공유**: 같은 파일을 여러 번 쓰면 `loadAsync` 는 한 번만 하고(`cache`) `gltf.scene.clone(true)` 로 복제합니다. `clone` 은 노드 트리만 복제하고 **지오메트리·재질은 공유**합니다. 메모리에 좋지만, 한 개만 색을 바꾸려면 재질을 `clone()` 해야 합니다 (23단계의 동물 피격 번쩍임이 그 예).
+
+**metalness 함정**: Nature Kit 의 glTF 는 모든 재질이 `metallicFactor: 1` 로 내보내져 있습니다. 금속은 **주변을 반사해서** 보이는 재질이라 환경맵이 없는 이 씬에서는 **검게** 나옵니다 (실제로 처음 넣었을 때 나무가 전부 검었습니다). `loadGltf` 에서 `metalness = 0` 으로 되돌립니다. 모델이 검게 나오면 제일 먼저 의심할 것.
+
+**모델 방향**: 이 키트는 `rotY = 0` 일 때 앞면이 +z 를 봅니다 (TV 장의 문, 소파의 앉는 면). 벽에 붙일 땐 등이 벽을 보게 돌리세요: -z 벽은 0, +z 벽은 π, +x 벽은 -π/2. 의자만 예외로 -z 를 보니, 확신이 없으면 스크린샷으로 확인하는 게 빠릅니다.
+
+### 실습
+
+1. 새 모델의 크기 재기: 콘솔에서 `await __game.world.furnitureReady; __game.world.colliders.at(-1)` 이 마지막에 놓인 가구의 충돌 상자(Box3)입니다. `min`/`max` 를 빼면 크기가 나옵니다.
+2. `public/models/kenney/` 에 키트의 다른 모델(예: `lampRoundTable.glb`, 원본 zip 의 `Models/GLTF format/`)을 넣고 사이드 테이블 위에 올려 보세요. `y: side.box.max.y`.
+3. `KENNEY_SCALE` 을 1.5 와 3 으로 바꿔 캐릭터와 비교해 보세요. 문(2.1m)과 침대의 비율이 어색해지는 지점을 찾아보세요.
+4. `loadGltf` 의 metalness 되돌리는 줄을 주석 처리하고 밖에 나가 보세요. 나무가 검게 변합니다. `scene.environment` 에 `RoomEnvironment` 를 넣으면 금속도 보이는지 확인해 보세요 (9단계 심화).
+5. 책상 `rotY` 를 π 로 바꿔 서랍이 벽을 보게 해 보세요. "앞면이 +z" 규칙이 몸에 익습니다.
+
+### 확인
+
+- `place()` 가 `group.add(obj)` **전에** `updateMatrixWorld(true)` 를 부르는 이유는? (힌트: `Box3.setFromObject` 는 월드 행렬을 읽는다)
+- 가구가 도착하기 전에 플레이어가 그 자리에 서 있으면 무슨 일이 생길까요? 6단계 `resolve` 를 떠올려 보세요.
+- `clone(true)` 한 두 모델 중 하나의 `material.color` 를 바꾸면 왜 둘 다 바뀔까요?
+
+---
+
+## 22단계. 집 밖 세상: 큰 땅, 울타리, 인스턴싱, 하늘 전환 (`src/outdoor.js`, `main.js` 의 SKY)
+
+### 개념
+
+거실 +z 벽에 **현관문**을 내고(`doorwayX`, 4단계 Door 에 `along: 'x'` 옵션을 추가해 z=일정한 벽에도 달 수 있게 했습니다) 밖으로 나가면 200m × 200m 잔디(`GROUND`), 집을 둘러싼 울타리(`YARD`), 그 밖의 숲과 들판이 있습니다. Kenney Nature Kit (CC0, https://kenney.nl/assets/nature-kit) 을 씁니다.
+
+**방 판정의 확장**: `roomAt` 은 실내 방 → 마당 → 들판 순으로 찾습니다. 마당 사각형이 집을 포함하므로 **실내를 먼저** 보는 순서가 중요합니다. 방 객체에 `outdoor: true` 를 달아 두면 카메라 천장 높이(`ceilingAt`: 실내 3m, 밖 60m)와 하늘 색을 이것으로 정할 수 있습니다.
+
+**결정적 난수**: 나무 120그루, 풀 400포기를 `Math.random` 으로 뿌리면 새로고침마다 숲이 바뀝니다. `rng(seed)` (mulberry32) 로 **같은 씨앗 → 같은 숲**을 만듭니다. "집 안·돌길·울타리 줄 피하기, 서로 2.5m 이상 떨어지기" 같은 조건은 `pick()` 이 30번까지 다시 뽑아 해결합니다.
+
+**충돌 상자는 모양대로가 아니라 쓰임대로**: 나무의 바운딩 박스는 잎까지 포함해 2m 가 넘습니다. 그대로 막으면 나무 근처에 못 갑니다. `footprint: [0.8, 0.8]` 로 **줄기만** 막습니다. 울타리는 칸마다 상자를 두지 않고 **변마다 긴 상자 하나**(출입구 `GATE` 구간은 둘로 쪼갬)로 5개만 둡니다. 6단계 `resolve` 가 매 프레임 모든 상자를 도는 걸 기억하세요.
+
+**InstancedMesh**: 풀 400개를 `clone` 으로 놓으면 드로우 콜 400개입니다. 같은 지오메트리·재질을 쓰는 물체는 `InstancedMesh(geometry, material, count)` 하나로 묶고, 인스턴스마다 `setMatrixAt(i, matrix)` 로 위치·회전·크기만 다르게 줍니다. 드로우 콜이 **모델당 1개**가 됩니다. 모델 안에 메시가 여럿(꽃은 줄기+꽃잎)이면 메시마다 InstancedMesh 를 만들고, 인스턴스 행렬 = 배치 행렬 × 메시의 로컬 행렬입니다.
+
+```js
+place.compose(pos, quat, scl);                 // 어디에, 어떻게 돌려서, 얼마나 크게
+m.multiplyMatrices(place, mesh.matrixWorld);   // 모델 안에서 이 메시가 있던 자리까지 포함
+inst.setMatrixAt(i, m);
+inst.instanceMatrix.needsUpdate = true;        // 안 하면 GPU 에 안 올라간다
+```
+
+울타리도 인스턴싱입니다 (`fence_simple` 100여 칸 → 메시 2개). Raycaster 는 InstancedMesh 도 맞춰 주므로(`hit.instanceId`) 총알이 울타리에 막힙니다.
+
+**그림자 카메라 따라가기**: 3단계의 DirectionalLight 그림자는 직교 카메라 한 장(`shadow.camera` ±22m, 2048²)으로 찍습니다. 200m 땅을 다 덮으면 해상도가 10배 떨어집니다. 대신 `world.update()` 에서 매 프레임 `sun.position` 과 `sun.target.position` 을 플레이어 기준으로 옮겨 **플레이어 주변만** 선명하게 찍습니다. 멀리는 어차피 안개에 가립니다.
+
+**하늘·안개 전환**: 실내는 흰 배경 + 짙은 안개(`FogExp2` 0.04), 밖은 하늘색 + 옅은 안개(0.009) 입니다. 문턱에서 갑자기 바뀌면 어색하니 `main.js` 가 매 프레임 `scene.background.lerp(목표, k)`, `fog.density += (목표 - 현재) * k` 로 섞습니다. `k = 1 - exp(-dt * 3)` 은 5단계의 프레임 독립 보간입니다. 안개 색은 항상 배경색과 같게 맞춰야 지평선이 자연스럽습니다.
+
+**지붕**: 천장은 `BackSide` 라 밖에서 위를 보면 비어 보입니다. 방마다 얇은 박스 지붕을 얹었습니다. 문이 많아지니 `doorwayZ` / `doorwayX` 두 도우미로 정리했습니다.
+
+### 실습
+
+1. `rng(20261023)` 의 씨앗을 바꿔 다른 숲을 만들어 보세요. 마음에 드는 씨앗을 찾으면 그게 "맵" 입니다.
+2. `footprint` 를 지우고 나무 사이를 걸어 보세요. 잎 밑으로 못 들어갑니다.
+3. `kit.scatter('grass', ...)` 를 `for` + `kit.place` 로 바꾸고 좌상단 FPS 와 `__game.renderer.info.render.calls` 를 비교해 보세요.
+4. `sun.shadow.camera.left/right/top/bottom` 을 ±100 으로 늘리고 그림자 가장자리를 보세요. 그리고 `update` 의 해 따라가기를 빼면 밖에서 그림자가 사라지는 걸 확인하세요.
+5. `SKY.outdoor.fog` 를 0.03 으로 올려 안개 낀 아침을 만들어 보세요. 밤도 만들어 보세요 (배경 어둡게 + HemisphereLight 약하게).
+6. 출입구(`GATE`)에 `fence_gate` 모델로 여닫는 문을 달아 보세요. 4단계 Door 를 상속하거나 비슷하게 만들면 됩니다.
+
+### 확인
+
+- 울타리 충돌 상자를 칸마다 두면 상자 수가 몇 개가 될까요? 변마다 하나로 줄여도 플레이 감각이 같은 이유는?
+- InstancedMesh 인스턴스 하나만 색을 바꾸려면? (힌트: `setColorAt`, 재질의 `vertexColors` 가 아니라 `instanceColor`)
+- 안개 색과 배경색이 다르면 어떤 모습이 될까요? 실제로 바꿔 보세요.
+
+---
+
+## 23단계. 돌아다니는 동물: 상태 기계, 애니메이션 클립, 피격과 드롭 (`src/animals.js`, `weapons.js` 의 `userData.animal`)
+
+### 개념
+
+울타리 밖 `ANIMAL_ZONE` 에 **Kenney Cube Pets** (CC0, https://kenney.nl/assets/cube-pets) 동물 12마리가 삽니다. 이 키트는 glTF 안에 `idle / walk / run / eat` 등 애니메이션 클립이 들어 있어서 8단계의 Mixamo 와 같은 방식(`AnimationMixer` + `clipAction`)으로 재생합니다. 뼈(Skeleton) 없이 **노드 자체를 움직이는** 클립이라 `clone(true)` 한 모델에도 이름으로 그대로 붙습니다.
+
+**상태 기계** (19단계 연습 게임과 같은 패턴): `idle` (서서 풀 뜯기, 1~4초) → `walk` (들판 안 임의의 점으로) → 도착하면 다시 `idle`. 플레이어가 7m 안에 오면 `flee` 로 전환해 **플레이어 반대 방향**(`p - playerPos` 를 정규화)으로 `run` 클립과 함께 달아나고, 14m 이상 멀어지면 진정합니다. 들판 가장자리에 몰리면 성분 부호를 뒤집어 비스듬히 튑니다. 방향 전환은 플레이어와 같은 "각도 차이를 -π~π 로 접어 보간" 입니다 (5단계).
+
+**피격 고리**: 11단계 Raycaster 는 "맞은 메시"만 알려 줍니다. 그 메시가 어느 동물인지 알려면 메시에 표식을 남겨야 합니다. 표적이 `userData.target` 을 쓴 것처럼 동물은 생성 시 모든 메시에 `userData.animal = this` 를 넣고, `weapons.js` 의 `shoot` / `meleeHit` 가 `hit.object.userData.animal` 을 보면 점수 대신 `world.animals.hit(animal, dmg)` 를 부릅니다. 무기마다 `dmg` (권총·소총·산탄 1, 저격 3, 찌르기 2) 를 두고 동물마다 `hp` (병아리 1 ~ 소 3) 를 둡니다.
+
+**번쩍임과 재질 복제**: 맞으면 0.15초 동안 `material.emissive` 를 빨갛게 올립니다. 21단계에서 말한 대로 `clone` 은 재질을 공유하므로 동물 하나가 번쩍이면 **같은 종 전부** 번쩍입니다. 그래서 생성 시 `m.material = m.material.clone()` 으로 동물마다 재질을 따로 둡니다.
+
+**죽음 → 드롭 → 리스폰**: HP 가 0 이면 `dead` 상태에서 `rotation.z` 를 0 → π/2 로 ease-out 보간해 옆으로 쓰러지고, 1.4초 뒤 모델을 치우며 종에 따라 1~3개의 고기(`makeMeat`: 구 + 원기둥)를 흩뿌립니다. 죽는 순간 **피격 목록에서 메시를 빼서**(`shootables.splice`) 시체에 총알이 박히지 않게 합니다. 25초 뒤 `respawnQueue` 가 새 동물을 만듭니다. 고기는 `sin` 으로 둥실거리며 돌고, `nearestItem` 으로 1.6m 안의 것을 찾습니다.
+
+**상호작용 통합** (`main.js`): 문·무기 선반·고기·가스레인지를 한 루프에서 **가장 가까운 것 하나**로 고르고 종류(`nearKind`)에 따라 안내 문구와 E 키 동작을 분기합니다. 대상이 늘어도 `consider()` 한 줄만 추가하면 됩니다.
+
+### 실습
+
+1. `FLEE_DIST` 를 2 로 줄이면 몰래 다가갈 수 있습니다. 반대로 `CALM_DIST` 를 50 으로 올리면 한 번 놀란 동물은 영원히 뜁니다.
+2. 멧돼지(`hog`)를 **공격형**으로 만들어 보세요: flee 대신 플레이어 쪽으로 달려오게 (`_v` 부호 반대), 닿으면 `ui.toast('받혔다!')`.
+3. `a.play('dance')` 처럼 클립 이름을 바꿔 보세요. 클립 목록은 `place()` 가 돌려주는 `clips.map(c => c.name)` 입니다.
+4. 재질 복제 줄(`m.material = m.material.clone()`)을 지우고 소 한 마리를 쏴 보세요. 소 전부가 번쩍입니다.
+5. 산탄총으로 가까이서 쏘면 소(HP 3)가 한 방에 죽는 이유를 코드에서 찾아보세요 (`pellets`).
+6. 동물끼리 겹치지 않게 해 보세요: `update` 에서 다른 동물과 1m 안이면 밀어내기 (6단계 원-원 충돌).
+
+### 확인
+
+- `userData` 에 객체 참조를 넣는 방식의 장점과, 대신 `Map<Mesh, Animal>` 을 쓰는 방식의 차이는?
+- 죽은 동물을 `shootables` 에서 빼지 않으면 어떤 일이 생길까요? 고기를 집을 때는 왜 문제가 없나요?
+- `flee` 방향을 "플레이어 반대"가 아니라 "가장 가까운 나무 뒤"로 바꾸려면 무엇이 더 필요할까요?
+
+---
+
+## 24단계. 주방과 요리: 인벤토리와 시간이 걸리는 상호작용 (`main.js` 의 `inv`, `cooking`)
+
+### 개념
+
+거실 -z 벽에 **주방 문**을 내고 8m × 8m 주방을 붙였습니다. 싱크대 줄은 `row` 배열을 돌며 `x = 5.6 + i * 0.43 * K` 로 **모듈 폭만큼 띄워** 놓습니다 (키트의 주방 모듈은 전부 폭 0.43 이라 이렇게 줄 세울 수 있습니다). 상부장·후드는 `y: 1.5` 로 벽에 띄우고 `collide: false`, 조리대 소품은 `y: counterTop` (21단계의 "위에 올리기").
+
+**인벤토리는 그냥 객체**: `inv = { raw, cooked }`. 고기를 주우면 `raw++`, HUD 는 `ui.setInventory(inv)` 가 문자열이 바뀔 때만 DOM 을 고칩니다 (12단계 HUD 와 같은 "값이 바뀔 때만 갱신" 습관).
+
+**시간이 걸리는 상호작용**: 지금까지 E 는 즉시 끝났습니다(문, 줍기). 요리는 `cooking = COOK_TIME` 을 세팅하고 **매 프레임 `dt` 만큼 줄이는** 타이머입니다. 요리 중에는 다른 상호작용 안내를 덮어쓰고, 0 이 되면 `cooked++`. 19단계 카운트다운과 같은 구조입니다. 가스레인지의 기준점(`world.stove.center`)은 가구가 도착한 뒤 실제 위치로 갱신됩니다.
+
+### 실습
+
+1. 요리에 연출을 붙여 보세요: 요리 중 가스레인지 위에 작은 주황 PointLight 를 켜고(3단계) 끝나면 끕니다.
+2. 익힌 고기를 먹는 동작(E 로 `cooked--`, 토스트 "냠")과 **배고픔 게이지**를 만들어 보세요. 시간이 지나면 줄고, 먹으면 찹니다.
+3. 냉장고에 E 로 고기를 넣고 꺼내는 **보관함**을 만들어 보세요. `inv` 와 같은 객체를 하나 더 두면 됩니다.
+4. 요리 중에 멀어지면 취소되게 해 보세요 (`nearKind !== 'stove'` 면 `cooking = 0`).
+5. 식탁 의자 4개의 `rotY` 를 모두 0 으로 바꿔 어느 의자가 등을 돌리는지 보고, "의자는 -z 를 본다"를 확인하세요.
+
+### 확인
+
+- `cooking` 을 `setTimeout` 으로 만들면 무엇이 달라질까요? (탭을 숨겼을 때, 게임을 일시정지했을 때)
+- `stove.center` 를 가구 도착 **전**에 고정 좌표로 두면 어떤 문제가 있을까요? 지금 코드는 어떻게 피했나요?
+
+---
+
+
+## 25단계. 진행 상황 저장: localStorage 스냅샷 (`src/save.js`, `main.js` 의 `snapshot` / `restore`)
+
+### 개념
+
+새로고침하면 고기·위치·탄약이 모두 초기화됩니다. 서버가 없어도 브라우저의 **localStorage** (도메인당 약 5MB 의 문자열 저장소)에 남기면 됩니다. 이미 스킨(IndexedDB, 16단계)과 사격장 최고 점수(`range.best`)가 이런 식으로 저장되고 있었고, 이번엔 "게임 진행" 전체를 한 덩어리로 저장합니다.
+
+**스냅샷 = 평범한 객체**: 저장은 `JSON.stringify` 라서 `Vector3` 나 `Door` 객체를 그대로 넣을 수 없습니다. `snapshot()` 이 **숫자·문자열·배열만으로** 상태를 다시 적습니다: 위치 `[x, y, z]`, 시점 `yaw/pitch/distance/mode`, 무기 id 와 `ammo`, `stats`, `inv`, 문마다 `open` 여부 배열. **무엇을 저장하지 않는지**도 결정입니다. 동물·떨어진 고기·연습 게임 진행은 저장하지 않습니다 (리스폰되는 것, 짧은 것).
+
+**복원은 "세터"를 거쳐서**: 불러올 때 `player.position.set(...)` 처럼 값을 꽂되, 파생 상태가 있는 것은 그 경로로 갑니다. 무기는 `selectWeapon(id)` (HUD·포인터락까지 갱신), 시점 모드는 `setMode`, 문은 `door.setOpen(open, true)` (애니메이션 없이 즉시 + 충돌 상자 갱신). 값만 바꾸고 파생 상태를 잊으면 "문은 열려 있는데 막히는" 버그가 납니다.
+
+**언제 저장하나**: 매 프레임 쓰면 60번/초 디스크 쓰기라 낭비입니다. `createAutoSave` 는 2초마다 한 번, 그리고 `beforeunload` (탭 닫기·새로고침) 와 `visibilitychange` (다른 탭으로) 때 즉시 씁니다. 모바일은 `beforeunload` 가 안 올 때가 있어서 `visibilitychange` 가 보험입니다.
+
+**버전 번호**: 저장 형식에 `v: 1` 을 넣고, 읽을 때 맞지 않으면 버립니다. 나중에 필드를 바꿔도 옛 저장 때문에 깨지지 않습니다. HUD 의 "진행 초기화" 버튼은 `clearSave()` 후 새로고침합니다.
+
+### 실습
+
+1. 개발자 도구 → Application → Local Storage 에서 `roomsim.save.v1` 을 열어 보세요. 값을 직접 고치고(예: `inv.raw` 를 99) 새로고침하면 반영됩니다.
+2. 떨어진 고기도 저장해 보세요: `world.animals.items` 의 좌표·라벨을 배열로 넣고, 복원 때 `makeMeat` 로 다시 만듭니다.
+3. `INTERVAL` 을 0.016 으로 바꾸고 Performance 탭에서 `setItem` 비용을 보세요.
+4. 저장 슬롯 3개를 만들어 보세요 (`KEY + ':' + slot`).
+5. `v` 를 2 로 올려 보세요. 옛 저장이 무시되고 처음부터 시작합니다. 대신 **마이그레이션**(v1 → v2 변환 함수)을 써 보세요.
+
+### 확인
+
+- localStorage 대신 쿠키나 IndexedDB 를 쓰면 무엇이 달라질까요? 스킨 파일은 왜 IndexedDB 였나요?
+- 저장 직후 탭을 강제 종료하면 어디까지 남을까요? `beforeunload` 가 보장하는 것과 못 하는 것은?
+- 동물 위치까지 저장하면 어떤 장단점이 있을까요?
+
+---
+
+
+## 26단계. 두 번째 조립 캐릭터 팩: 같은 뼈대의 부위 섞어 입기 (`src/umchar.js`, `furniture.js` 의 `loadGltf`)
+
+### 개념
+
+스킨 목록에 **"여성 · 캐주얼", "남성 · SWAT"** 같은 21벌이 추가됐습니다. Quaternius 의 Ultimate Modular Women / Men 팩(CC0)입니다. 17단계의 유니버설 팩과 **다른 뼈대**(62개, `Hips / UpperArm.L / Wrist.R …`)를 쓰므로 섞어 쓸 수는 없고, 커스터마이저 맨 위 **"캐릭터 팩"** 셀렉트로 둘 중 하나를 고릅니다. 같은 커스터마이저가 두 팩을 다루게 만든 과정이 이 단계의 내용입니다.
+
+**에셋 준비 (um-prep)**: 원본은 의상마다 3MB 짜리 .gltf (버퍼가 base64 로 안에 박힘) 이고 24개 애니메이션이 **모든 파일에 중복**으로 들어 있습니다. 그대로 쓰면 21벌 × 3MB. 그래서 스크립트로 (1) 메시만 남긴 .glb 와 (2) 뼈대+애니메이션만 남긴 `anim.glb` (성별당 1개) 로 나눴습니다. glTF 의 `accessor` 는 `bufferView` 참조를 지우면 "0 으로 채워진 것"으로 취급되는 규격을 이용해, 안 쓰는 애니메이션 데이터는 버퍼에서 빼고 accessor 목록만 남겼습니다. 21MB 로 줄었습니다.
+
+**부위 찾기와 GLTFLoader 의 이름 규칙**: 의상 파일 하나에 `Casual_Head / Casual_Body / Casual_Legs / Casual_Feet` (+`Backpack` 같은 덤) 노드가 있습니다. 그런데 재질이 여러 개인 부위는 GLTFLoader 가 **그룹 아래 메시 여러 개**(`Cube037`, `Cube037_1` …)로 쪼개 놓습니다. 그래서 메시 이름이 아니라 **"Armature 바로 아래 조상 노드"** 의 이름으로 슬롯을 정합니다 (`partNodes`). 또 GLTFLoader 는 노드 이름의 `.` 을 지웁니다(`sanitizeNodeName`): 파일 속 `Wrist.R` 이 코드에서는 `WristR` 입니다. 처음엔 이걸 몰라 무기가 손에 안 붙었습니다.
+
+**조립**: 첫 의상 파일을 복제해 부위를 전부 떼고 **뼈대만** 남긴 뒤(`loadBase`), 슬롯마다 원하는 의상 파일에서 그 부위 노드만 떼어 와 `bind(this.skeleton, bindMatrix)` 로 묶습니다(`attach`). 17단계와 같은 원리인데, 기본 몸이 없고 모든 슬롯이 부품이라는 점이 다릅니다. 덤(가방·망토)은 상의 의상의 것을 따라갑니다.
+
+**색**: 이 팩은 텍스처 없이 **단색 재질**(`Skin`, `Hair_Brown`, `Green` …) 입니다. 피부·머리는 재질 이름으로 찾아 색을 통째로 바꾸고(원본 선택 시 `userData.orig` 로 되돌림), 옷은 `원본색 × 곱하기 색` 입니다. 곱하기라 흰색이면 그대로, 어둡게는 되지만 밝게는 안 됩니다. 재질을 `clone` 해 두는 이유는 23단계와 같습니다.
+
+**한 커스터마이저, 두 팩**: `qchar.js` 의 `sanitize / schemaFor / randomParams` 가 `params.family` 를 보고 `umchar.js` 로 넘깁니다. 폼은 `schemaFor(P)` 로 **값에 따라 다시 만들어지고**(성별이 바뀌면 의상 목록도 바뀜), 플레이어는 `family` 가 바뀌면 캐릭터 객체를 통째로 새로 만듭니다(`applyCustomParams`). 무기·조준 코드가 쓰는 Mixamo 식 뼈 이름은 `BONE_ALIAS_UM` 표를 하나 더 두어 `getBone` 이 순서대로 찾습니다. 기본 제공 스킨을 👤 로 고쳐 저장하면 원본은 두고 새 스킨으로 들어갑니다.
+
+### 실습
+
+1. 콘솔에서 섞어 입기: `__game.player.setSkin({ format: 'qchar', params: { family: 'um', gender: 'male', head: 'King', body: 'Swat', legs: 'Beach', feet: 'Farmer', hair: 'blonde' } })`
+2. `anim.glb` 에는 Idle/Walk/Run 말고도 `Gun_Shoot`, `Punch_Left`, `Sword_Slash`, `Death` 가 있습니다. `__game.player.qClips.all.map(c => c.name)` 로 보고, 12단계 사격 때 `Gun_Shoot` 을 한 번 재생해 보세요.
+3. `partNodes` 대신 예전처럼 메시 이름으로 슬롯을 찾게 바꿔 보세요. "머리만 바꾸기"가 왜 안 되는지 보입니다.
+4. 옷 색을 곱하기 대신 통째로 바꾸기(`set`)로 해 보세요. 단추·주머니 같은 세부 색이 사라집니다.
+5. 여성 뼈대에 남성 의상을 붙여 보세요 (`attach` 에서 성별 경로를 바꿔). 뼈 이름은 같아도 비율이 달라 어떻게 찌그러지는지 확인하세요.
+6. 원본 .gltf 와 정리된 .glb 를 `https://gltf.report` 같은 뷰어에 넣어 accessor/bufferView 수를 비교해 보세요.
+
+### 확인
+
+- 유니버설 팩 부품을 이 뼈대에 붙이면 왜 안 될까요? 뼈 이름이 같다면 될까요, 뼈 수가 같다면 될까요?
+- `sanitizeNodeName` 이 이름을 바꾸는데 애니메이션은 왜 그대로 재생될까요?
+- 21벌이 전부 같은 `anim.glb` 를 쓰는데도 메모리가 늘지 않는 이유는? (`loadGltf` 의 캐시, `clone` 과 공유)
+
+---
+
 ## 다음에 추가해 볼 것 (난이도 순)
 
 기본 단계를 마쳤으면 기능을 하나씩 추가하면서 배우는 게 가장 빠릅니다.
@@ -978,16 +1401,20 @@ three.js 와 무관하지만 "게임답게" 느껴지는 데 가장 큰 영향�
 3. **텍스처 파일**: `TextureLoader` 로 나무 이미지를 읽어 바닥 `map` 에 입히기 (10단계의 CanvasTexture 를 파일로 바꾼 것)
 4. **클릭으로 물체 선택**: 마우스 좌표를 `Raycaster.setFromCamera` 로 쏴서 맞은 가구 색 바꾸기 (11단계 응용, 포인터락 해제 상태에서)
 5. **회전하는 선풍기**: 매 프레임 `rotation.y += dt * 10` (1단계 + 4단계)
-6. **움직이는 표적**: `range.update` 에서 `pivot.position.z` 를 사인파로 좌우 왕복 (10단계)
+6. **콤보 보너스**: 연습 게임에서 연속 명중 시 점수 배율 증가, 빗나가면 초기화 (19단계)
 7. **탄약 상자 줍기**: 사대 위 탄약 상자에 E 로 상호작용하면 모든 무기 탄약 보충 (5단계 + 12단계)
 8. **계단과 2층**: 충돌 상자에 높이 개념을 추가해 올라갈 수 있게 (6단계 확장)
 9. **점프 애니메이션**: Mixamo 에서 Jump 클립을 받아 공중에서 재생 (8단계 응용)
 10. **문 자동 열림**: 문 근처에 오면 자동으로 열리고 멀어지면 닫히기 (4단계 + 5단계)
 11. **머리가 조준점을 따라가기**: `poseArms` 에 Head 뼈 추가 (14단계)
+11-1. **찌르기 모션에 카메라 전진**: 찌르는 순간 `camera` 를 앞으로 10cm 밀었다 되돌려 돌진감 주기 (18단계 + 13단계 반동)
 12. **3D 사운드**: `AudioListener` + `PositionalAudio` 로 표적 명중음이 거리에 따라 작아지게 (15단계)
 13. **미니맵**: 두 번째 카메라(`OrthographicCamera`)를 위에서 내려다보게 두고 화면 구석에 렌더링 (`renderer.setViewport`, `setScissor`). 13단계 RenderTarget 과 비교해 보세요
 14. **탄도 낙차**: 광선 대신 작은 구체를 중력 받으며 날려 멀리 쏠수록 아래에 맞게 (11단계를 물체 방식으로 바꾸기)
 15. **물리 엔진 도입**: cannon-es 또는 rapier 로 직접 만든 충돌을 교체
+16. **낮/밤 주기**: 해의 위치와 하늘 색을 시간에 따라 돌리고, 밤에는 동물이 잠들게 (22단계 + 23단계)
+17. **울타리 밖 지형 높낮이**: 땅을 `PlaneGeometry` 분할 + 정점 y 노이즈로 언덕 만들기, 플레이어 y 를 땅 높이에 맞추기 (22단계 확장)
+18. **동물 가죽·털 아이템과 상점**: 종마다 다른 드롭 테이블, 거실 TV 장 앞 NPC 에게 판매 (23단계 + 24단계)
 
 ---
 
@@ -998,3 +1425,5 @@ three.js 와 무관하지만 "게임답게" 느껴지는 데 가장 큰 영향�
 - three.js 예제 모음 (코드 포함): https://threejs.org/examples/
 - Discover three.js (무료 온라인 책): https://discoverthreejs.com/
 - Mixamo (무료 캐릭터, 애니메이션): https://www.mixamo.com/
+- Kenney (CC0 3D 키트: Furniture / Nature / Cube Pets 등): https://kenney.nl/assets
+- Quaternius (CC0 모듈형 캐릭터): https://quaternius.com/

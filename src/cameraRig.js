@@ -102,7 +102,8 @@ export class CameraRig {
     const b = this.world.bounds, m = 0.2;
     this.desired.x = THREE.MathUtils.clamp(this.desired.x, b.minX + m, b.maxX - m);
     this.desired.z = THREE.MathUtils.clamp(this.desired.z, b.minZ + m, b.maxZ - m);
-    this.desired.y = THREE.MathUtils.clamp(this.desired.y, 0.3, this.world.height - m);
+    const ceil = this.world.ceilingAt ? this.world.ceilingAt(this.desired.x, this.desired.z) : this.world.height; // 실내는 천장, 밖은 하늘
+    this.desired.y = THREE.MathUtils.clamp(this.desired.y, 0.3, ceil - m);
 
     // 부드러운 추적 (프레임 독립). 조준 중에는 빠르게 붙는다
     const t = 1 - Math.exp(-dt * (aim ? 20 : 12));

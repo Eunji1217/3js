@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { buildWeaponModel, WEAPONS } from './weapons.js';
-import { playDing } from './audio.js';
+import { playDing, playBeep, playBuzzer } from './audio.js';
 
 // 실내 사격장 방. 거실(x 5~15) 오른쪽에 붙는다. 사대는 x≈18.6, 표적은 x≈25.6 (약 7m 거리)
 export const RANGE_ROOM = { id: 'range', name: '사격장', minX: 15, maxX: 27, minZ: -5, maxZ: 5, floor: 0x8f8f8c, wall: 0xd6d6cf };
@@ -9,6 +9,14 @@ const LANES = [-3, 0, 3];
 const TARGET_X = 25.6;
 const TARGET_R = 0.3;   // 표적판 반지름 (0.6m 판)
 const DOWN_TIME = 1.4;  // 맞은 뒤 넘어져 있는 시간
+
+// --- 연습 게임 ---
+export const GAME_TIME = 60;     // 제한 시간(초)
+const COUNTDOWN = 3;             // 시작 전 카운트다운(초)
+const GAME_DOWN_TIME = 0.6;      // 게임 중에는 표적이 빨리 다시 선다
+const MOVE_AMP = 1.3;            // 표적 좌우 왕복 폭(m). 레인 간격 3m 이므로 이웃과 겹치지 않는다
+const MOVE_SPEED = [0.9, 1.5, 1.2]; // 레인별 기본 속도(m/s). 시간이 갈수록 빨라진다
+const BEST_KEY = 'range.best';
 
 function canvasTexture(w, h, draw) {
   const c = document.createElement('canvas');
@@ -115,7 +123,7 @@ export function buildRange({ group, std, box, shootables }) {
     pivot.add(board);
     shootables.push(board);
 
-    const target = { lane: i + 1, pivot, board, down: false, timer: 0 };
+    const target = { lane: i + 1, pivot, board, down: false, timer: 0, homeZ: z, phase: i * 2.1 }; // phase: 레인마다 왕복 위상을 다르게
     board.userData.target = target;
     back.userData.target = null;
     targets.push(target);
@@ -167,6 +175,52 @@ export function buildRange({ group, std, box, shootables }) {
   });
   const rack = { center: new THREE.Vector3(rackX, 1, rackZ + 0.45), label: '무기 선반' };
 
+  // --- 연습 게임 상태 기계: idle → countdown → running → over → idle ---
+  // 게임 기록(score/hits/shots)은 전체 누적 점수와 별개로 센다
+  const game = {
+    state: 'idle',
+    total: GAME_TIME, // 제한 시간 (UI 표시용)
+    time: 0,          // countdown/running 에서 남은 시간
+    score: 0, hits: 0, shots: 0,
+    best: Number(localStorage.getItem(BEST_KEY) || 0),
+    isBest: false,    // 방금 끝난 판이 최고 기록인지
+    lastBeep: -1,     // 카운트다운 소리를 초마다 한 번만 내기 위한 기억
+  };
+  const running = () => game.state === 'running';
+
+  function startGame() {
+    game.state = 'countdown';
+    game.time = COUNTDOWN;
+    game.score = game.hits = game.shots = 0;
+    game.isBest = false;
+    game.lastBeep = -1;
+    for (const t of targets) { t.down = false; t.timer = 0; }
+  }
+
+  function stopGame() {
+    if (game.state !== 'running' && game.state !== 'countdown') return;
+    game.state = 'over';
+    game.time = 0;
+    if (game.score > game.best) {
+      game.best = game.score;
+      game.isBest = game.score > 0;
+      localStorage.setItem(BEST_KEY, String(game.best));
+    }
+    playBuzzer();
+  }
+
+  // 결과 창을 닫으면 대기 상태로
+  function dismissGame() {
+    if (game.state === 'over') game.state = 'idle';
+  }
+
+  function onShot() {
+    if (running()) game.shots++;
+  }
+  function onHit(score) {
+    if (running()) { game.hits++; game.score += score; }
+  }
+
   // 표적 피격: 링 점수(10점 만점) 반환. 근접 공격은 meleeScore 를 그대로 준다. 넘어져 있는 동안은 0
   function hit(target, point, meleeScore = 0) {
     if (target.down) return 0;
@@ -175,12 +229,28 @@ export function buildRange({ group, std, box, shootables }) {
     if (r > TARGET_R) return 0;
     const score = meleeScore || Math.max(1, 10 - Math.floor(r / (TARGET_R / 10)));
     target.down = true;
-    target.timer = DOWN_TIME;
+    target.timer = running() ? GAME_DOWN_TIME : DOWN_TIME;
     playDing();
     return score;
   }
 
   function update(dt) {
+    // 게임 타이머
+    if (game.state === 'countdown') {
+      game.time -= dt;
+      const sec = Math.ceil(game.time);
+      if (sec !== game.lastBeep && sec > 0) { game.lastBeep = sec; playBeep(880, 0.1); }
+      if (game.time <= 0) {
+        game.state = 'running';
+        game.time = GAME_TIME;
+        playBeep(1760, 0.3);
+        for (const t of targets) t.phase = t.lane * 2.1; // 매 판 같은 자리에서 출발
+      }
+    } else if (running()) {
+      game.time -= dt;
+      if (game.time <= 0) stopGame();
+    }
+
     for (const t of targets) {
       if (t.down) {
         t.timer -= dt;
@@ -189,8 +259,17 @@ export function buildRange({ group, std, box, shootables }) {
       const goal = t.down ? -1.45 : 0; // z 축 음의 회전 = 사수 반대쪽(+X)으로 넘어감
       const k = Math.min(1, dt * (t.down ? 14 : 6));
       t.pivot.rotation.z += (goal - t.pivot.rotation.z) * k;
+
+      // 좌우 왕복: 게임 중에는 사인파로 흔들고 (뒤로 갈수록 1.6배까지 빨라진다), 아니면 제자리로 돌아온다
+      if (running()) {
+        const speedUp = 1 + 0.6 * (1 - game.time / GAME_TIME);
+        t.phase += dt * (MOVE_SPEED[t.lane - 1] * speedUp) / MOVE_AMP; // 위상 속도 = 선속도 / 진폭
+        t.pivot.position.z = t.homeZ + MOVE_AMP * Math.sin(t.phase);
+      } else {
+        t.pivot.position.z += (t.homeZ - t.pivot.position.z) * Math.min(1, dt * 3);
+      }
     }
   }
 
-  return { targets, rack, hit, update };
+  return { targets, rack, hit, update, game, startGame, stopGame, dismissGame, onShot, onHit };
 }

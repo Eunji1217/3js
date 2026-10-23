@@ -59,8 +59,8 @@ export function playShot(kind) {
   osc.stop(t + P.dur + 0.05);
 }
 
-// 칼 휘두르는 소리: 밴드패스 노이즈 스윕
-export function playSwing() {
+// 칼 휘두르는 소리: 밴드패스 노이즈 스윕. pitch < 1 이면 낮고 묵직하게 (찌르기)
+export function playSwing(pitch = 1) {
   const c = ac();
   if (!c) return;
   const t = c.currentTime;
@@ -69,8 +69,8 @@ export function playSwing() {
   const filt = c.createBiquadFilter();
   filt.type = 'bandpass';
   filt.Q.value = 1.5;
-  filt.frequency.setValueAtTime(400, t);
-  filt.frequency.exponentialRampToValueAtTime(2500, t + 0.15);
+  filt.frequency.setValueAtTime(400 * pitch, t);
+  filt.frequency.exponentialRampToValueAtTime(2500 * pitch, t + 0.15);
   const gain = c.createGain();
   gain.gain.setValueAtTime(0.0001, t);
   gain.gain.exponentialRampToValueAtTime(0.3, t + 0.05);
@@ -147,4 +147,54 @@ export function playClick(when = 0) {
 export function playReload(duration) {
   playClick(0.1);
   playClick(Math.max(0.3, duration - 0.3));
+}
+
+// 칼이 무언가에 박히는 '턱': 짧은 저음 + 둔탁한 노이즈
+export function playHitThud() {
+  const c = ac();
+  if (!c) return;
+  const t = c.currentTime;
+  const osc = c.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(220, t);
+  osc.frequency.exponentialRampToValueAtTime(70, t + 0.08);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.5, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+  osc.connect(g).connect(c.destination);
+  osc.start(t);
+  osc.stop(t + 0.12);
+  const src = c.createBufferSource();
+  src.buffer = noise(c);
+  const filt = c.createBiquadFilter();
+  filt.type = 'lowpass';
+  filt.frequency.value = 900;
+  const g2 = c.createGain();
+  g2.gain.setValueAtTime(0.3, t);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+  src.connect(filt).connect(g2).connect(c.destination);
+  src.start(t);
+  src.stop(t + 0.08);
+}
+
+// 짧은 '삑' (카운트다운). freq 를 높이면 시작 신호
+export function playBeep(freq = 880, dur = 0.12, gainV = 0.25) {
+  const c = ac();
+  if (!c) return;
+  const t = c.currentTime;
+  const osc = c.createOscillator();
+  osc.type = 'square';
+  osc.frequency.value = freq;
+  const g = c.createGain();
+  g.gain.setValueAtTime(gainV, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.connect(g).connect(c.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+// 종료 부저: 낮은 사각파가 0.6초 울린다
+export function playBuzzer() {
+  playBeep(220, 0.6, 0.3);
+  playBeep(165, 0.6, 0.2);
 }
