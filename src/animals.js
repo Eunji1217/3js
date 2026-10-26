@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createKit } from './furniture.js';
 import { ANIMAL_ZONE } from './outdoor.js';
+import { ITEMS, rollDrops } from './items.js';
 
 // 울타리 밖 들판의 동물. Kenney Cube Pets (CC0, 애니메이션 idle/walk/run/eat 포함).
 // 돌아다니다가(wander) 플레이어가 가까이 오면 달아나고(flee), 맞아서 HP 가 0 이 되면 쓰러진 뒤 고기를 떨어뜨린다.
@@ -127,16 +128,32 @@ class Animal {
   }
 }
 
-/** 떨어진 고기 (주워서 인벤토리에 넣는다) */
-function makeMeat() {
+/** 떨어진 아이템 모양 (주워서 인벤토리에 넣는다). 종류별로 간단한 도형 */
+const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.6, ...extra });
+function makeItemMesh(id) {
   const g = new THREE.Group();
-  const meat = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), new THREE.MeshStandardMaterial({ color: 0xc8484e, roughness: 0.6 }));
-  meat.scale.set(1.3, 0.7, 1);
-  meat.castShadow = true;
-  const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.3, 8), new THREE.MeshStandardMaterial({ color: 0xf2eee4, roughness: 0.5 }));
-  bone.rotation.z = Math.PI / 2;
-  bone.position.set(0.22, 0, 0);
-  g.add(meat, bone);
+  const tags = ITEMS[id]?.tags || [];
+  if (id === 'bone') {
+    const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.36, 8), std(0xf2eee4));
+    bone.rotation.z = Math.PI / 2;
+    const k1 = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), std(0xf2eee4)); k1.position.x = -0.18;
+    const k2 = k1.clone(); k2.position.x = 0.18;
+    g.add(bone, k1, k2);
+  } else if (id === 'fat') {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.12, 0.18), std(0xf4e2b0)); g.add(m);
+  } else if (id === 'egg') {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 10), std(0xfaf3e0, { roughness: 0.4 })); m.scale.set(1, 1.3, 1); g.add(m);
+  } else {
+    // 고기: 종마다 색만 다르게
+    const colors = { beef: 0xc8484e, pork: 0xe8a0a8, boar: 0x9a3a3a, venison: 0x8a3a2a, rabbit: 0xe0b0a8, foxmeat: 0xd07060, chicken: 0xf0c8a0 };
+    const meat = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), std(colors[id] || 0xc8484e));
+    meat.scale.set(1.3, 0.7, 1);
+    const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.3, 8), std(0xf2eee4));
+    bone.rotation.z = Math.PI / 2;
+    bone.position.set(0.22, 0, 0);
+    g.add(meat, bone);
+  }
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
 
@@ -209,12 +226,13 @@ export function createAnimals({ group, shootables }) {
           // 치우고 고기를 떨어뜨린다
           group.remove(a.obj);
           animals.splice(i, 1);
-          for (let k = 0; k < a.species.meat; k++) {
-            const g = makeMeat();
-            g.position.set(a.obj.position.x + (Math.random() - 0.5) * 0.8, 0.15, a.obj.position.z + (Math.random() - 0.5) * 0.8);
+          // 종별 드롭 표(items.js DROPS)를 굴려 떨어뜨린다
+          for (const id of rollDrops(a.species.id)) {
+            const g = makeItemMesh(id);
+            g.position.set(a.obj.position.x + (Math.random() - 0.5) * 1.0, 0.15, a.obj.position.z + (Math.random() - 0.5) * 1.0);
             g.userData.phase = Math.random() * 6.28;
             group.add(g);
-            items.push({ group: g, label: a.species.name + ' 고기' });
+            items.push({ group: g, id, label: ITEMS[id].name });
           }
           respawnQueue.push(RESPAWN);
         }

@@ -20,6 +20,8 @@ export class Input {
     this.onSelectWeapon = null; // 숫자키(0부터 시작하는 인덱스) / X 키(null) 콜백
     this.onWheelKey = null;     // T 키 누름(true)/뗌(false) 콜백 — 무기 휠
     this.onMove = null;         // 마우스 이동 원시 콜백 (dx, dy) — 잠김/드래그와 무관하게 항상 호출
+    this.onToggleInventory = null; // I 키 콜백 (인벤토리·요리 도감)
+    this.onHotbarScroll = null;    // Shift+휠 또는 핫바 위에서 휠: 핫바 다음/이전 줄 (+1/-1)
 
     window.addEventListener('keydown', (e) => {
       if (isTyping(e)) return;
@@ -30,6 +32,7 @@ export class Input {
       this.justPressed.add(e.code);
       if (e.code === 'KeyV' && this.onToggleView) this.onToggleView();
       if (e.code === 'Tab' && this.onToggleSkins) this.onToggleSkins();
+      if (e.code === 'KeyI' && this.onToggleInventory) this.onToggleInventory();
       if (e.code === 'KeyT' && this.onWheelKey) this.onWheelKey(true);
       if (this.onSelectWeapon) {
         if (/^Digit[1-9]$/.test(e.code)) this.onSelectWeapon(Number(e.code[5]) - 1);
@@ -62,8 +65,10 @@ export class Input {
     // 휠은 창 전체에서 받는다 (HUD 위에 커서가 있어도 무기 전환이 되게). 패널 안 스크롤은 제외
     window.addEventListener('wheel', (e) => {
       if (e.target instanceof Element && e.target.closest('.panel')) return;
-      this.wheel += e.deltaY;
       e.preventDefault();
+      // Shift+휠 (또는 핫바 위에서 휠) 은 핫바 줄 넘기기, 그냥 휠은 무기 전환
+      if ((e.shiftKey || (e.target instanceof Element && e.target.closest('#hotbar'))) && this.onHotbarScroll) { this.onHotbarScroll(Math.sign(e.deltaY)); return; }
+      this.wheel += e.deltaY;
     }, { passive: false });
     domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 

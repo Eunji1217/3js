@@ -1,7 +1,7 @@
 // 진행 상황 저장 (25단계): 위치·시점·무기·탄약·점수·인벤토리·문 상태를 localStorage 에 스냅샷으로 남긴다.
 // 2초마다 + 탭을 닫거나 숨길 때 저장하고, 시작할 때 불러온다. 스킨(IndexedDB)과 사격장 최고 점수(range.best)는 각자 따로 저장한다.
 
-const KEY = 'roomsim.save.v1';
+const KEY = 'roomsim.save.v2'; // v2: 인벤토리가 { raw, cooked } 에서 아이템 개수표로 바뀜
 const INTERVAL = 2; // 초
 
 export function loadSave() {
@@ -9,7 +9,7 @@ export function loadSave() {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const s = JSON.parse(raw);
-    return s && s.v === 1 ? s : null; // 형식이 바뀌면 v 를 올리고 옛 저장은 버린다
+    return s && s.v === 2 ? s : null; // 형식이 바뀌면 v 를 올리고 옛 저장은 버린다
   } catch {
     return null;
   }
@@ -27,7 +27,7 @@ export function createAutoSave(snapshot) {
   const write = () => {
     if (stopped) return; // 초기화 중: 새로고침 직전에 다시 저장되지 않게
     try {
-      localStorage.setItem(KEY, JSON.stringify({ v: 1, savedAt: Date.now(), ...snapshot() }));
+      localStorage.setItem(KEY, JSON.stringify({ v: 2, savedAt: Date.now(), ...snapshot() }));
     } catch (err) {
       console.warn('저장 실패:', err); // 용량 초과·프라이빗 모드 등. 게임은 계속 돈다
     }

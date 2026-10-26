@@ -8,9 +8,10 @@ import { SkinStore, DEFAULT_SKINS } from './skins.js';
 import { UI } from './ui.js';
 import { WeaponSystem, WEAPONS } from './weapons.js';
 import { loadSave, clearSave, createAutoSave } from './save.js';
+import { Inventory, ITEMS, consume } from './items.js';
 
 const INTERACT_DIST = 1.6; // 문/선반/고기/가스레인지와 상호작용할 수 있는 거리
-const COOK_TIME = 2.5;     // 고기 한 덩이 굽는 시간(초)
+
 // 하늘·안개: 실내는 흰 배경 + 짙은 안개(참고 예제 느낌), 밖은 하늘색 + 옅은 안개. 방을 오가면 부드럽게 섞는다 (22단계)
 const SKY = { indoor: { color: new THREE.Color(0xffffff), fog: 0.04 }, outdoor: { color: new THREE.Color(0xa9d4f5), fog: 0.009 } };
 
@@ -90,10 +91,20 @@ function toggleGame() {
 }
 ui.onGameToggle = toggleGame;
 
-// 인벤토리 (사냥한 고기 / 주방에서 구운 고기)
-const inv = { raw: 0, cooked: 0 };
-let cooking = 0; // 남은 요리 시간. 0 이면 요리 중이 아님
-world.animals.onKill = (a) => ui.toast(`${a.species.name} 사냥 성공! 고기 ${a.species.meat}개를 떨어뜨렸어요`, 2500);
+// 인벤토리 (사냥·채집 재료, 만든 요리) — items.js 의 Inventory. 핫바와 인벤토리 창은 ui.setInventory 가 그린다
+const inv = new Inventory();
+ui.setInventory(inv);
+let cooking = null; // { recipe, t } 요리 중이면 남은 시간
+world.animals.onKill = (a) => ui.toast(`${a.species.name} 사냥 성공! 재료를 떨어뜨렸어요`, 2500);
+ui.onCook = (recipe) => {
+  if (cooking || !consume(inv, recipe)) return;
+  cooking = { recipe, t: recipe.time };
+  ui.setInventory(inv);
+  ui.toggleInvPanel(false);
+  syncPointerLock();
+};
+input.onToggleInventory = () => { ui.toggleInvPanel(); syncPointerLock(); };
+input.onHotbarScroll = (dir) => ui.hotbarScroll(dir);
 world.animals.onHit = () => ui.flashHit('명중');
 
 // --- 진행 저장 (25단계): 2초마다 localStorage 에 스냅샷. 시작할 때 restore 로 되돌린다 ---
@@ -104,7 +115,7 @@ const snapshot = () => ({
   weapon: weapons.current?.id ?? null,
   ammo: { ...weapons.ammo },
   stats: { ...weapons.stats },
-  inv: { ...inv },
+  inv: { ...inv.counts },
   doors: world.doors.map((d) => d.open),
 });
 const autoSave = createAutoSave(snapshot);
@@ -114,7 +125,7 @@ function restore(s) {
   if (s.cam) { rig.yaw = s.cam.yaw ?? 0; rig.pitch = s.cam.pitch ?? 0.35; rig.distance = s.cam.distance ?? 3.5; setMode(s.cam.mode === 'first' ? 'first' : 'third'); }
   if (s.ammo) for (const k of Object.keys(weapons.ammo)) if (typeof s.ammo[k] === 'number') weapons.ammo[k] = s.ammo[k];
   if (s.stats) weapons.stats = { score: 0, shots: 0, hits: 0, ...s.stats };
-  if (s.inv) { inv.raw = s.inv.raw | 0; inv.cooked = s.inv.cooked | 0; ui.setInventory(inv); }
+  if (s.inv) { inv.load(s.inv); ui.setInventory(inv); }
   if (Array.isArray(s.doors)) world.doors.forEach((d, i) => { if (typeof s.doors[i] === 'boolean') d.setOpen(s.doors[i], true); });
   if (s.weapon && WEAPONS.some((w) => w.id === s.weapon)) selectWeapon(s.weapon);
   return true;
@@ -182,26 +193,39 @@ function frame() {
   for (const door of world.doors) consider(door, door.center, 'door');
   consider(world.range.rack, world.range.rack.center, 'rack');
   for (const it of world.animals.items) consider(it, it.group.position, 'meat');
+  for (const p of world.outdoor.pickups) if (p.obj.visible) consider(p, p.center, 'pickup');
   consider(world.stove, world.stove.center, 'stove');
-  const pressE = input.pressed('KeyE');
-  if (cooking > 0) {
-    cooking -= dt;
-    ui.setPrompt(`요리 중... ${cooking.toFixed(1)}초`);
-    if (cooking <= 0) { cooking = 0; inv.cooked++; ui.setInventory(inv); ui.toast('고기를 구웠어요! (익힌 고기 +1)'); }
+  ui.setNearStove(nearKind === 'stove');
+  // 채집물 다시 자라기
+  for (const p of world.outdoor.pickups) if (!p.obj.visible && (p.timer -= dt) <= 0) p.obj.visible = true;
+  const pressE = input.pressed('KeyE') && !ui.anyPanelOpen;
+  if (cooking) {
+    cooking.t -= dt;
+    ui.setPrompt(`${cooking.recipe.name} 요리 중... ${Math.max(0, cooking.t).toFixed(1)}초`);
+    if (cooking.t <= 0) {
+      inv.add(cooking.recipe.result, 1);
+      ui.setInventory(inv);
+      ui.toast(`${ITEMS[cooking.recipe.result].icon} ${cooking.recipe.name} 완성!`);
+      cooking = null;
+    }
   } else if (nearKind === 'rack') {
     ui.setPrompt('E  무기 선택');
     if (pressE) { ui.toggleWeaponPanel(); syncPointerLock(); }
   } else if (nearKind === 'meat') {
     ui.setPrompt(`E  ${near.label} 줍기`);
-    if (pressE) { inv.raw += world.animals.pickup(near); ui.setInventory(inv); ui.toast(`${near.label} 획득 (생고기 ${inv.raw})`); }
+    if (pressE) { world.animals.pickup(near); inv.add(near.id, 1); ui.setInventory(inv); ui.toast(`${ITEMS[near.id].icon} ${near.label} 획득 (${inv.count(near.id)}개)`); }
+  } else if (nearKind === 'pickup') {
+    ui.setPrompt(`E  ${near.label} 따기`);
+    if (pressE) { near.obj.visible = false; near.timer = near.respawn; inv.add(near.id, 1); ui.setInventory(inv); ui.toast(`${ITEMS[near.id].icon} ${near.label} 획득 (${inv.count(near.id)}개)`); }
   } else if (nearKind === 'stove') {
-    ui.setPrompt(inv.raw > 0 ? `E  요리하기 (생고기 ${inv.raw} → 익힌 고기)` : '가스레인지: 생고기가 있어야 요리할 수 있어요 (들판에서 사냥)');
-    if (pressE && inv.raw > 0) { inv.raw--; cooking = COOK_TIME; ui.setInventory(inv); }
+    ui.setPrompt('E  요리하기 (배합법 보기)');
+    if (pressE) { ui.toggleInvPanel(true, 'recipes'); syncPointerLock(); }
   } else if (nearKind === 'door') {
     ui.setPrompt(`E  ${near.label} ${near.open ? '닫기' : '열기'}`);
     if (pressE) near.toggle();
   } else {
     ui.setPrompt(null);
+    if (pressE) { ui.toggleInvPanel(true, 'items'); syncPointerLock(); } // 상호작용할 게 없으면 E 는 인벤토리
   }
   for (const door of world.doors) door.update(dt);
   if (input.pressed('KeyG') && !ui.wheelOpen) toggleGame();

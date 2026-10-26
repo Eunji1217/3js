@@ -119,9 +119,15 @@ export function buildOutdoor({ group, colliders, shootables, wallMeshes, house }
   for (let i = 0; i < 18; i++) { const p = pick(outer, { gap: 2, keepOut: [Y] }); if (p) rock(p); }
   // 그루터기·통나무·버섯 (작은 장식, 충돌 없음)
   for (let i = 0; i < 6; i++) { const p = pick(outer, { gap: 1.5, keepOut: [Y] }); if (p) jobs.push(kit.place(i % 2 ? 'log' : 'stump_round', p.x, p.z, { y: SINK, rotY: R() * 6.28, collide: false })); }
-  for (let i = 0; i < 10; i++) { const p = pick(outer, { gap: 1, keepOut: [Y], avoidHouse: true }); if (p) jobs.push(kit.place('mushroom_red', p.x, p.z, { y: SINK, rotY: R() * 6.28, collide: false, shoot: false })); }
+  // 채집물: E 로 따면 숨겼다가 respawn 초 뒤 다시 보인다 (main.js 가 처리)
+  const pickups = [];
+  const pickup = (name, id, label, x, z, respawn, extra = {}) =>
+    kit.place(name, x, z, { y: SINK, rotY: R() * 6.28, collide: false, shoot: false, ...extra })
+      .then(({ obj }) => pickups.push({ obj, id, label, center: new THREE.Vector3(x, 1, z), respawn, timer: 0 }));
+  for (let i = 0; i < 14; i++) { const p = pick(outer, { gap: 1, keepOut: [Y], avoidHouse: true }); if (p) jobs.push(pickup('mushroom_red', 'mushroom', '버섯', p.x, p.z, 120)); }
+  for (let i = 0; i < 4; i++) { const p = pick(ANIMAL_ZONE, { gap: 2 }); if (p) jobs.push(pickup('mushroom_red', 'mushroom', '버섯', p.x, p.z, 120)); }
   // 주방 뒤 텃밭 (호박)
-  for (let i = 0; i < 4; i++) jobs.push(kit.place('crop_pumpkin', 6.5 + i * 1.3, -15.2, { y: SINK, rotY: R() * 6.28, collide: false, scale: NATURE_SCALE * 0.8 }));
+  for (let i = 0; i < 4; i++) jobs.push(pickup('crop_pumpkin', 'pumpkin', '호박', 6.5 + i * 1.3, -15.2, 90, { scale: NATURE_SCALE * 0.8 }));
   // 마당 모닥불
   jobs.push(kit.place('campfire_logs', 2, 12, { y: SINK, collide: false }));
 
@@ -144,5 +150,5 @@ export function buildOutdoor({ group, colliders, shootables, wallMeshes, house }
   jobs.push(kit.scatter('plant_bush', spots(40, near, [Y]), { y: SINK }));
 
   const ready = Promise.all([fenceReady, postsReady, pathReady, ...jobs]);
-  return { ground, ready };
+  return { ground, ready, pickups };
 }

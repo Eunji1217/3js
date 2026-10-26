@@ -1,5 +1,8 @@
 import { schemaFor, DEFAULT_PARAMS, PRESETS, randomParams, sanitize } from './qchar.js';
 import { extractPalette, paletteToParams } from './palette.js';
+import { ITEMS, TAGS, RECIPES, missing } from './items.js';
+
+const HOTBAR_SLOTS = 9;
 
 const IMAGE_RE = /\.(jpe?g|png|webp|gif|bmp)$/i;
 
@@ -118,7 +121,127 @@ export class UI {
     this.$('gameClose').addEventListener('click', () => this.toggleGamePanel(false));
     this.$('gameDismiss').addEventListener('click', () => this.toggleGamePanel(false));
 
+    // 조작법 도움말 접기 (상태는 localStorage 에 기억)
+    const hud = this.$('hud');
+    const setCollapsed = (c) => { hud.classList.toggle('collapsed', c); this.$('hudToggle').textContent = c ? '도움말 펼치기' : '도움말 접기'; };
+    try { setCollapsed(localStorage.getItem('roomsim.hudCollapsed') === '1'); } catch {}
+    this.$('hudToggle').addEventListener('click', () => {
+      const c = !hud.classList.contains('collapsed');
+      setCollapsed(c);
+      try { localStorage.setItem('roomsim.hudCollapsed', c ? '1' : '0'); } catch {}
+    });
+
+    // 인벤토리 / 요리 도감 (E 또는 I)
+    this.invPanel = this.$('invPanel');
+    this.hotbar = this.$('hotbar');
+    this.hotbarPage = 0;
+    this.invTab = 'items';
+    this.invData = null;      // Inventory (main.js 가 setInventory 로 넘김)
+    this.nearStove = false;   // 가스레인지 옆이면 도감의 "요리" 버튼이 켜진다
+    this.onCook = null;       // (recipe) => void
+    this.$('invClose').addEventListener('click', () => this.toggleInvPanel(false));
+    this.$('invOpen').addEventListener('click', () => this.toggleInvPanel());
+    for (const b of this.invPanel.querySelectorAll('.tabs button')) b.addEventListener('click', () => { this.invTab = b.dataset.tab; this.renderInventory(); });
+
     this.refresh();
+  }
+
+  // --- 인벤토리 / 요리 도감 ---
+  get invPanelOpen() {
+    return !this.invPanel.classList.contains('hidden');
+  }
+
+  toggleInvPanel(force, tab) {
+    const open = force === undefined ? !this.invPanelOpen : force;
+    if (tab) this.invTab = tab;
+    this.invPanel.classList.toggle('hidden', !open);
+    if (open) { this.panel.classList.add('hidden'); this.weaponPanel.classList.add('hidden'); this.charPanel.classList.add('hidden'); this.renderInventory(); }
+    this.onPanelsChanged?.();
+  }
+
+  // 인벤토리가 바뀔 때마다 (줍기·요리·복원) 핫바와 열린 패널을 다시 그린다
+  setInventory(inv) {
+    this.invData = inv;
+    this.renderHotbar();
+    if (this.invPanelOpen) this.renderInventory();
+  }
+
+  setNearStove(near) {
+    if (this.nearStove === near) return;
+    this.nearStove = near;
+    if (this.invPanelOpen && this.invTab === 'recipes') this.renderInventory();
+  }
+
+  hotbarScroll(dir) {
+    const pages = Math.max(1, Math.ceil((this.invData?.list().length || 0) / HOTBAR_SLOTS));
+    this.hotbarPage = ((this.hotbarPage + dir) % pages + pages) % pages;
+    this.renderHotbar();
+  }
+
+  // 마인크래프트식 한 줄 핫바: 가진 것 9칸씩, Shift+휠로 다음 줄
+  renderHotbar() {
+    const list = this.invData?.list() || [];
+    const pages = Math.max(1, Math.ceil(list.length / HOTBAR_SLOTS));
+    if (this.hotbarPage >= pages) this.hotbarPage = pages - 1;
+    const slots = this.$('hotbarSlots');
+    slots.innerHTML = '';
+    const start = this.hotbarPage * HOTBAR_SLOTS;
+    for (let i = 0; i < HOTBAR_SLOTS; i++) {
+      const it = list[start + i];
+      const d = document.createElement('div');
+      d.className = 'slot' + (it ? '' : ' empty');
+      if (it) { d.innerHTML = `<span class="ic">${it.icon}</span><b>${it.n}</b>`; d.title = `${it.name} ×${it.n} — ${it.desc}`; }
+      slots.appendChild(d);
+    }
+    this.$('hotbarPage').textContent = pages > 1 ? `${this.hotbarPage + 1} / ${pages}  (Shift+휠)` : '';
+    this.hotbar.classList.toggle('hidden', list.length === 0);
+  }
+
+  renderInventory() {
+    const inv = this.invData;
+    for (const b of this.invPanel.querySelectorAll('.tabs button')) b.classList.toggle('active', b.dataset.tab === this.invTab);
+    const box = this.$('invBody');
+    box.innerHTML = '';
+    if (!inv) return;
+    if (this.invTab === 'items') {
+      const list = inv.list();
+      if (!list.length) { box.innerHTML = '<div class="empty">아직 아무것도 없어요. 현관문으로 나가 들판의 동물을 사냥하거나 텃밭의 호박·숲의 버섯을 따 보세요.</div>'; return; }
+      for (const group of [['재료', (it) => !it.tags.includes('dish')], ['요리', (it) => it.tags.includes('dish')]]) {
+        const items = list.filter(group[1]);
+        if (!items.length) continue;
+        const h = document.createElement('h4'); h.textContent = group[0]; box.appendChild(h);
+        const grid = document.createElement('div'); grid.className = 'grid';
+        for (const it of items) {
+          const d = document.createElement('div'); d.className = 'item';
+          d.innerHTML = `<span class="ic">${it.icon}</span><div><div class="nm">${it.name} <b>×${it.n}</b>${it.sate ? ` <small>포만감 ${it.sate}</small>` : ''}</div><div class="ds">${it.desc}</div></div>`;
+          grid.appendChild(d);
+        }
+        box.appendChild(grid);
+      }
+    } else {
+      const hint = document.createElement('div'); hint.className = 'hint';
+      hint.textContent = this.nearStove ? '가스레인지 앞입니다. 재료가 있는 요리는 "요리" 버튼이 켜져요.' : '요리는 주방 가스레인지 앞에서 E 를 눌러 이 창을 열면 만들 수 있어요.';
+      box.appendChild(hint);
+      for (const r of RECIPES) {
+        const miss = missing(inv, r);
+        const ok = miss.length === 0;
+        const row = document.createElement('div'); row.className = 'recipe' + (ok ? ' ok' : '');
+        const res = ITEMS[r.result];
+        const ing = r.ingredients.map((s) => {
+          const info = s.id ? ITEMS[s.id] : TAGS[s.tag];
+          const have = s.id ? inv.count(s.id) : inv.tagCount(s.tag);
+          return `<span class="${have >= s.n ? 'have' : 'lack'}">${info.icon} ${info.name} ${Math.min(have, s.n)}/${s.n}</span>`;
+        }).join(' + ');
+        row.innerHTML = `<span class="ic">${res.icon}</span><div><div class="nm">${r.name}${res.sate ? ` <small>포만감 ${res.sate} · ${r.time}초</small>` : ''}</div><div class="ds">${ing}</div></div>`;
+        const btn = document.createElement('button');
+        btn.textContent = '요리';
+        btn.disabled = !(ok && this.nearStove);
+        btn.title = !this.nearStove ? '가스레인지 앞에서만' : ok ? '' : '재료 부족';
+        btn.addEventListener('click', () => this.onCook?.(r));
+        row.appendChild(btn);
+        box.appendChild(row);
+      }
+    }
   }
 
   get gamePanelOpen() {
@@ -190,20 +313,20 @@ export class UI {
   }
 
   get anyPanelOpen() {
-    return this.panelOpen || this.weaponPanelOpen || this.charPanelOpen || this.gamePanelOpen;
+    return this.panelOpen || this.weaponPanelOpen || this.charPanelOpen || this.gamePanelOpen || this.invPanelOpen;
   }
 
   togglePanel(force) {
     const open = force === undefined ? !this.panelOpen : force;
     this.panel.classList.toggle('hidden', !open);
-    if (open) { this.weaponPanel.classList.add('hidden'); this.charPanel.classList.add('hidden'); }
+    if (open) { this.weaponPanel.classList.add('hidden'); this.charPanel.classList.add('hidden'); this.invPanel.classList.add('hidden'); }
     this.onPanelsChanged?.();
   }
 
   toggleWeaponPanel(force) {
     const open = force === undefined ? !this.weaponPanelOpen : force;
     this.weaponPanel.classList.toggle('hidden', !open);
-    if (open) { this.panel.classList.add('hidden'); this.charPanel.classList.add('hidden'); }
+    if (open) { this.panel.classList.add('hidden'); this.charPanel.classList.add('hidden'); this.invPanel.classList.add('hidden'); }
     this.onPanelsChanged?.();
   }
 
@@ -614,14 +737,6 @@ export class UI {
 
   setMode(text) {
     this.$('mode').textContent = text;
-  }
-
-  // 인벤토리 (고기)
-  setInventory({ raw, cooked }) {
-    const text = `생고기 ${raw} · 익힌 고기 ${cooked}`;
-    const el = this.$('inv');
-    if (el.textContent !== text) el.textContent = text;
-    el.classList.toggle('hidden', raw === 0 && cooked === 0);
   }
 
   setRoom(name) {

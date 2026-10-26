@@ -15,6 +15,7 @@
         user-select: none;
       }
       #hud div > b:first-child { display: inline-block; min-width: 92px; }
+      #hud.collapsed > div:not(#mode):not(#room) { display: none; } /* 도움말 접기: 모드·현재 위치와 버튼만 남긴다 */
       #hud button {
         margin-top: 6px; margin-right: 6px; padding: 4px 10px; border: 1px solid #999; border-radius: 6px;
         background: #fff; cursor: pointer; font: inherit;
@@ -130,6 +131,36 @@
         user-select: none; font-variant-numeric: tabular-nums;
       }
 
+      /* 핫바 (가진 재료·요리 한 줄, Shift+휠로 다음 줄) */
+      #hotbar { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 15; text-align: center; user-select: none; }
+      #hotbarSlots { display: flex; gap: 4px; padding: 4px; background: rgba(0, 0, 0, 0.55); border-radius: 8px; }
+      #hotbar .slot { width: 44px; height: 44px; border: 2px solid rgba(255, 255, 255, 0.35); border-radius: 6px; background: rgba(255, 255, 255, 0.08); position: relative; display: flex; align-items: center; justify-content: center; }
+      #hotbar .slot.empty { opacity: 0.5; }
+      #hotbar .slot .ic { font-size: 24px; line-height: 1; }
+      #hotbar .slot b { position: absolute; right: 3px; bottom: 1px; font-size: 12px; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; }
+      #hotbarPage { font-size: 11px; color: #fff; text-shadow: 0 0 3px #000; margin-top: 3px; min-height: 14px; }
+
+      /* 인벤토리 / 요리 도감 (E, I) */
+      #invPanel { width: 420px; max-height: calc(100vh - 24px); overflow-y: auto; box-sizing: border-box; }
+      #invPanel .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+      #invPanel .tabs button { flex: 1; padding: 5px 0; border: 1px solid #bbb; border-radius: 6px; background: #fff; cursor: pointer; font: inherit; }
+      #invPanel .tabs button.active { background: #2b7cff; border-color: #2b7cff; color: #fff; }
+      #invPanel h4 { margin: 8px 0 4px; font-size: 13px; color: #555; }
+      #invPanel .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+      #invPanel .item, #invPanel .recipe { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid #e5e5e5; border-radius: 8px; font-size: 13px; }
+      #invPanel .recipe { margin-top: 6px; opacity: 0.6; }
+      #invPanel .recipe.ok { opacity: 1; border-color: #9fcf9f; background: #f3fbf3; }
+      #invPanel .ic { font-size: 24px; line-height: 1; flex: 0 0 auto; }
+      #invPanel .nm { font-weight: 600; }
+      #invPanel .nm small { font-weight: 400; color: #777; }
+      #invPanel .ds { font-size: 12px; color: #666; }
+      #invPanel .recipe > div { flex: 1; }
+      #invPanel .recipe .have { color: #2a7d2a; }
+      #invPanel .recipe .lack { color: #b33; }
+      #invPanel .recipe button { padding: 4px 10px; border: 1px solid #2b7cff; border-radius: 6px; background: #2b7cff; color: #fff; cursor: pointer; font: inherit; }
+      #invPanel .recipe button:disabled { background: #eee; border-color: #ccc; color: #999; cursor: default; }
+      #invPanel .empty, #invPanel .hint { font-size: 12px; color: #666; line-height: 1.5; margin-bottom: 6px; }
+
       /* 무기 휠 (T) */
       #wheel {
         position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 18;
@@ -198,19 +229,22 @@
       <div><b>Shift</b> 달리기 · <b>Space</b> 점프</div>
       <div><b>마우스</b> 시점 회전 (클릭해 잠금 · ESC 해제) · <b>- / =</b> 카메라 거리</div>
       <div><b>V</b> 1인칭 / 3인칭 전환</div>
-      <div><b>E</b> 문 · 무기 선반 · 고기 줍기 · 요리 (주방 가스레인지)</div>
+      <div><b>E</b> 문 · 무기 선반 · 재료 줍기/따기 · 요리 (가스레인지 앞) · 아무것도 없으면 인벤토리</div>
+      <div><b>I</b> 인벤토리 / 요리 도감 · <b>Shift+휠</b> 핫바 다음 줄</div>
       <div><b>T (누르기)</b> 무기 휠 · <b>1 ~ 5</b> 바로 선택 · <b>X</b> 넣기</div>
       <div><b>휠 스크롤</b> 무기 넘기기 (맨손에서도)</div>
       <div><b>좌클릭</b> 사격 / 칼 베기 / 주먹 · <b>우클릭</b> 조준 / 칼 찌르기 · <b>R</b> 재장전</div>
       <div><b>우클릭 2번</b> 조준경 배율 전환 (1인칭 소총 · 저격총)</div>
       <div><b>G</b> 연습 게임 시작 / 중지 (사격장 안에서 · 60초 · 움직이는 표적)</div>
-      <div><b>사냥</b> 거실 현관문 → 마당 → 울타리 출입구 밖 들판의 동물을 쏘면 고기를 떨어뜨려요</div>
+      <div><b>사냥</b> 현관문 → 마당 → 울타리 밖 들판의 동물을 쏘면 종류별 재료를 떨어뜨려요. 텃밭 호박·숲 버섯도 따요</div>
       <div id="mode">모드: 3인칭</div>
       <div id="room">현재: 침실</div>
-      <div id="inv" class="hidden"></div>
+
       <button id="skinOpen">스킨 선택 (Tab)</button>
       <button id="weaponOpen">무기 선택</button>
       <button id="gameStart">연습 게임 시작 (G)</button>
+      <button id="invOpen">인벤토리 (I)</button>
+      <button id="hudToggle" title="조작법 도움말 접기 / 펼치기 (핫바와 겹치면 접으세요)">도움말 접기</button>
       <button id="saveReset" title="localStorage 에 2초마다 자동 저장됩니다">진행 초기화</button>
     </div>
 
@@ -229,6 +263,14 @@
         사격장 안에서 <b>G</b> 를 누르면 60초 연습 게임이 시작돼요.
       </div>
       <div class="foot"><button id="scoreReset">점수 초기화</button></div>
+    </div>
+
+    <div id="hotbar" class="hidden"><div id="hotbarSlots"></div><div id="hotbarPage"></div></div>
+
+    <div id="invPanel" class="panel hidden">
+      <h3>인벤토리 · 요리 도감 <button id="invClose" title="닫기">×</button></h3>
+      <div class="tabs"><button data-tab="items">재료 · 요리</button><button data-tab="recipes">배합법 (도감)</button></div>
+      <div id="invBody"></div>
     </div>
 
     <div id="gamePanel" class="panel hidden">
