@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { asset } from './paths.js';
 import { createKit } from './furniture.js';
 import { ANIMAL_ZONE } from './outdoor.js';
 import { ITEMS, rollDrops } from './items.js';
@@ -163,7 +164,7 @@ function makeItemMesh(id) {
  * @param {THREE.Object3D[]} ctx.shootables
  */
 export function createAnimals({ group, shootables }) {
-  const kit = createKit({ base: '/models/pets/', scale: 1, group, shootables: [] }); // 피격 목록은 동물 단위로 직접 관리
+  const kit = createKit({ base: asset('models/pets/'), scale: 1, group, shootables: [] }); // 피격 목록은 동물 단위로 직접 관리
   const animals = [];
   const items = [];      // 바닥에 떨어진 고기
   const respawnQueue = []; // 남은 시간(초)

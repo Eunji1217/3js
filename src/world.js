@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { asset } from './paths.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { Door } from './door.js';
 import { RANGE_ROOM, buildRange } from './range.js';
@@ -146,7 +147,7 @@ export function createWorld() {
   // 침실·거실·주방 가구: Kenney Furniture Kit 모델 (21단계). 네트워크에서 오므로 비동기로 놓고,
   // 충돌 상자·피격 메시는 place() 가 도착하는 대로 colliders / shootables 에 밀어 넣는다
   // (둘 다 매 프레임 배열을 다시 읽으므로 늦게 추가돼도 바로 반영된다).
-  const furniture = createKit({ base: '/models/kenney/', scale: KENNEY_SCALE, group, colliders, shootables });
+  const furniture = createKit({ base: asset('models/kenney/'), scale: KENNEY_SCALE, group, colliders, shootables });
   const stove = { center: new THREE.Vector3(9.2, 1, -12.0), label: '가스레인지' }; // 요리 상호작용 기준점
   const furnitureReady = (async () => {
     const P = furniture.place;

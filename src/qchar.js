@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { asset } from './paths.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { umSchema, umSanitize, umRandom } from './umchar.js';
@@ -11,7 +12,7 @@ const FAMILY_FIELD = { key: 'family', label: '캐릭터 팩', type: 'select', op
 // 모든 부품이 같은 65개 뼈대(root, pelvis, spine_01 … hand_r)를 쓰므로 부품의 SkinnedMesh 를 기본 몸의 Skeleton 에 다시 묶기만 하면 된다.
 // 애니메이션도 같은 뼈대용 Universal Animation Library 를 그대로 재생한다 (리타게팅 없음).
 
-const BASE = '/models/q/';
+const BASE = asset('models/q/');
 const loader = new GLTFLoader();
 const texLoader = new THREE.TextureLoader();
 const cache = new Map(); // url → Promise<gltf>

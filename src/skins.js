@@ -7,12 +7,13 @@ const DB_STORE = 'skinFiles';
 
 import { UM_GENDERS, UM_DEFAULT } from './umchar.js';
 
-export const SOLDIER_URL = '/models/Soldier.glb';
+import { asset } from './paths.js';
+export const SOLDIER_URL = asset('models/Soldier.glb');
 export const ACCEPT_RE = /\.(glb|fbx)$/i;
 
 // 첫 번째 항목이 기본 스킨. 애니메이션이 없는 모델은 Soldier 의 걷기/달리기를 자동으로 옮겨 쓴다.
 export const DEFAULT_SKINS = [
-  { id: 'casual', name: '일반인 (기본)', url: '/models/readyplayer.me.glb', format: 'glb', builtin: true },
+  { id: 'casual', name: '일반인 (기본)', url: asset('models/readyplayer.me.glb'), format: 'glb', builtin: true },
   { id: 'soldier', name: '군인', url: SOLDIER_URL, format: 'glb', builtin: true },
   // Quaternius Ultimate Modular Men/Women: 의상 한 벌씩. 👤 로 열면 부위별로 섞어 입을 수 있다 (26단계)
   ...Object.entries(UM_GENDERS).flatMap(([gender, g]) =>

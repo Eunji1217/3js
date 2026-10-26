@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { asset } from './paths.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { loadGltf } from './furniture.js';
 
@@ -7,7 +8,7 @@ import { loadGltf } from './furniture.js';
 // 그래서 "A 의상의 머리 + B 의상의 상의" 처럼 메시만 골라 한 뼈대에 다시 묶으면 된다 (17단계 attach 와 같은 원리).
 // 애니메이션(Idle/Walk/Run 등 24개)은 성별당 anim.glb 하나에서 가져온다. 파일은 public/models/um/ (um-prep 으로 용량을 줄인 것).
 
-const BASE = '/models/um/';
+const BASE = asset('models/um/');
 
 export const UM_GENDERS = {
   female: {

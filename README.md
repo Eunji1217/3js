@@ -4,9 +4,11 @@
 코드가 4,500줄 정도로 작아서 three.js 입문 교재로 쓰기 좋습니다.
 이 문서는 **기본 개념 → 실습 → 다음 단계** 순서로 따라가는 튜토리얼입니다.
 
+**온라인에서 바로 해 보기**: https://eunji1217.github.io/3js/ (main 에 푸시하면 GitHub Actions 가 자동으로 다시 배포합니다. 28단계)
+
 - **1부 (1~9단계)**: 방·문·캐릭터·카메라를 만드는 three.js 기본 (약 1,300줄)
 - **2부 (10~20단계)**: 1부 개념을 조합해 무기·사격장·조준경·효과음·캐릭터 커스텀·칼 모션·연습 게임·사진 색 추출을 만드는 응용 (약 2,000줄)
-- **3부 (21~27단계)**: 공개 에셋(Kenney·Quaternius CC0 키트)으로 집을 꾸미고, 집 밖 세상(땅·울타리·숲)과 동물·사냥·채집, 재료·배합법·요리 도감, 진행 저장, 남/여 의상 조립 캐릭터를 만드는 확장 (약 1,600줄)
+- **3부 (21~28단계)**: 공개 에셋(Kenney·Quaternius CC0 키트)으로 집을 꾸미고, 집 밖 세상(땅·울타리·숲)과 동물·사냥·채집, 재료·배합법·요리 도감, 진행 저장, 남/여 의상 조립 캐릭터를 만들고 GitHub Pages 에 배포하는 확장 (약 1,600줄)
 
 각 단계는 다음 구성으로 되어 있습니다.
 
@@ -1430,6 +1432,46 @@ inst.instanceMatrix.needsUpdate = true;        // 안 하면 GPU 에 안 올라�
 
 ---
 
+
+## 28단계. 온라인 배포: GitHub Pages + Actions, 그리고 base 경로 (`vite.config.js`, `src/paths.js`, `.github/workflows/deploy.yml`)
+
+### 개념
+
+이 프로젝트는 서버 코드가 없는 **정적 사이트**입니다 (HTML + JS + 모델 파일). 그래서 파일을 올려 주는 곳이면 어디든 됩니다. GitHub Pages 는 저장소가 이미 GitHub 에 있고 무료라서 골랐습니다. 주소는 `https://<계정>.github.io/<저장소>/` 입니다.
+
+**빌드**: `npm run build` (= `vite build`) 가 `dist/` 에 번들을 만듭니다. three.js 와 우리 코드가 파일 몇 개로 합쳐지고 `public/` 은 그대로 복사됩니다. 개발 서버(`vite`)는 소스를 그때그때 변환해 주지만, 배포는 미리 만들어 둔 `dist/` 를 올리는 것입니다.
+
+**base 경로 문제**: 로컬에서는 사이트가 `/` 에 있지만 Pages 에서는 `/3js/` 아래에 있습니다. 코드에 `'/models/kenney/'` 처럼 **절대 경로**를 적어 두면 배포 후 `https://eunji1217.github.io/models/...` 를 찾다가 404 가 납니다. 해결은 두 줄입니다.
+
+```js
+// vite.config.js — 빌드할 때만 '/3js/'
+base: command === 'build' ? '/3js/' : '/',
+// src/paths.js — 코드에서는 항상 이걸 거친다. Vite 가 base 를 import.meta.env.BASE_URL 로 넣어 준다
+export const asset = (path) => import.meta.env.BASE_URL + path.replace(/^\//, '');
+```
+
+`index.html` 의 `<script src="/src/main.js">` 는 Vite 가 빌드하며 알아서 고치지만, **JS 안의 문자열 경로**는 Vite 가 모르므로 직접 `asset()` 으로 바꿨습니다 (`createKit` 의 `base`, `SOLDIER_URL`, `qchar.js`/`umchar.js` 의 `BASE`).
+
+**자동 배포 (GitHub Actions)**: `.github/workflows/deploy.yml` 은 "main 에 푸시되면 → Node 설치 → `npm ci` → `npm run build` → `dist/` 를 Pages 에 올리기" 입니다. 저장소 설정의 Pages Source 가 **GitHub Actions** 여야 합니다 (여기서는 `gh api -X POST repos/<계정>/<저장소>/pages -f build_type=workflow` 로 켰습니다). 배포 상태는 저장소의 Actions 탭에서 봅니다. 모델 파일이 55MB 쯤 되는데 Pages 한도(사이트 1GB)에는 여유가 있습니다.
+
+**온라인에서 달라지는 것**: 저장(25단계)은 브라우저 localStorage 라 **사람마다, 기기마다 따로** 입니다. 파일로 넣은 스킨(IndexedDB)도 마찬가지입니다. 여러 사람이 **같은 세계**에서 만나려면 서버(WebSocket)와 상태 동기화가 필요한데, 그건 별도 단계입니다("다음에 추가해 볼 것" 19).
+
+### 실습
+
+1. `npm run build && npx vite preview` 로 로컬에서 배포본을 열어 보세요 (`http://localhost:4173/3js/`). 개발 서버와 어떤 점이 다른가요? (주소, 속도, 콘솔의 경고)
+2. `src/paths.js` 의 `asset` 을 쓰지 않고 `'/models/q/'` 로 되돌린 뒤 빌드해서 preview 로 열어 보세요. 커스터마이저가 404 로 깨집니다.
+3. 저장소 이름을 바꾸면 `vite.config.js` 의 base 도 바꿔야 합니다. 환경 변수(`process.env.BASE`)로 받게 바꿔 보세요.
+4. Actions 탭에서 빌드 로그를 읽어 보세요. `npm ci` 가 `npm install` 과 다른 점은?
+5. 배포본은 HTTPS 입니다. 포인터락·IndexedDB·사진 드롭이 `file://` 로 열었을 때와 어떻게 다른지 비교해 보세요.
+
+### 확인
+
+- `import.meta.env.BASE_URL` 은 언제 결정되나요? (빌드 시점 vs 실행 시점)
+- `public/` 의 파일과 `src/` 에서 `import` 한 파일은 빌드 결과에서 어떻게 다르게 다뤄지나요? (`src/skins/*.glb` 의 `import.meta.glob` 과 비교)
+- 저장을 서버에 두면 무엇이 좋아지고 무엇이 어려워질까요?
+
+---
+
 ## 다음에 추가해 볼 것 (난이도 순)
 
 기본 단계를 마쳤으면 기능을 하나씩 추가하면서 배우는 게 가장 빠릅니다.
@@ -1453,6 +1495,7 @@ inst.instanceMatrix.needsUpdate = true;        // 안 하면 GPU 에 안 올라�
 16. **낮/밤 주기**: 해의 위치와 하늘 색을 시간에 따라 돌리고, 밤에는 동물이 잠들게 (22단계 + 23단계)
 17. **울타리 밖 지형 높낮이**: 땅을 `PlaneGeometry` 분할 + 정점 y 노이즈로 언덕 만들기, 플레이어 y 를 땅 높이에 맞추기 (22단계 확장)
 18. **동물 가죽·털 아이템과 상점**: 종마다 다른 드롭 테이블, 거실 TV 장 앞 NPC 에게 판매 (23단계 + 24단계)
+19. **멀티플레이**: 작은 WebSocket 서버(예: Node + ws, 또는 Colyseus/PartyKit)로 위치·방향·애니메이션 상태를 초당 10~20번 주고받아 다른 플레이어를 같은 방에 그리기. 정적 Pages 만으로는 안 되고 서버를 어딘가에 띄워야 한다 (28단계 다음)
 
 ---
 

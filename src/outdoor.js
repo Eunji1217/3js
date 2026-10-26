@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { asset } from './paths.js';
 import { createKit, NATURE_SCALE } from './furniture.js';
 
 // 집 밖: 잔디 땅, 울타리(마당), 나무·바위·풀. Kenney Nature Kit (CC0) 사용.
@@ -34,7 +35,7 @@ function rng(seed) {
  * @param {{minX:number,maxX:number,minZ:number,maxZ:number}} ctx.house 집 전체 바닥 영역 (나무를 심지 않을 곳)
  */
 export function buildOutdoor({ group, colliders, shootables, wallMeshes, house }) {
-  const kit = createKit({ base: '/models/nature/', scale: NATURE_SCALE, group, colliders, shootables });
+  const kit = createKit({ base: asset('models/nature/'), scale: NATURE_SCALE, group, colliders, shootables });
 
   // --- 땅 ---
   const gw = GROUND.maxX - GROUND.minX, gd = GROUND.maxZ - GROUND.minZ;
