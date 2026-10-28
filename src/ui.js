@@ -58,6 +58,9 @@ export class UI {
       this.addFiles(files.filter((f) => f !== image));
     });
 
+    // 스킨 목록(카탈로그)에서 골라 추가
+    this.$('skinCatalogAdd').addEventListener('click', () => this.addFromCatalog());
+
     // 링크로 추가
     this.$('skinUrlAdd').addEventListener('click', () => this.addUrl());
     this.$('skinUrl').addEventListener('keydown', (e) => {
@@ -136,6 +139,16 @@ export class UI {
     this.hotbar = this.$('hotbar');
     this.hotbarPage = 0;
     this.invTab = 'items';
+    this.onEat = null;        // 요리 칸 클릭 → 먹기 (31단계)
+    // 상점 (33단계)
+    this.shopPanel = this.$('shopPanel');
+    this.shopVendor = null;
+    this.shopCtx = null;
+    this.onSell = null;       // (id, n)
+    this.onBuy = null;        // (entry)  entry: { ammo, n, price } 또는 { item, price }
+    this.$('shopClose').addEventListener('click', () => this.toggleShop(false));
+    // 체력·배고픔·돈·시각 HUD (31단계). 값이 바뀐 프레임에만 DOM 을 고친다
+    this._vitals = { hp: null, food: null, money: null, time: null };
     this.invData = null;      // Inventory (main.js 가 setInventory 로 넘김)
     this.nearStove = false;   // 가스레인지 옆이면 도감의 "요리" 버튼이 켜진다
     this.onCook = null;       // (recipe) => void
@@ -155,7 +168,7 @@ export class UI {
     const open = force === undefined ? !this.invPanelOpen : force;
     if (tab) this.invTab = tab;
     this.invPanel.classList.toggle('hidden', !open);
-    if (open) { this.panel.classList.add('hidden'); this.weaponPanel.classList.add('hidden'); this.charPanel.classList.add('hidden'); this.renderInventory(); }
+    if (open) { this.panel.classList.add('hidden'); this.weaponPanel.classList.add('hidden'); this.charPanel.classList.add('hidden'); this.shopPanel.classList.add('hidden'); this.renderInventory(); }
     this.onPanelsChanged?.();
   }
 
@@ -176,6 +189,7 @@ export class UI {
     const pages = Math.max(1, Math.ceil((this.invData?.list().length || 0) / HOTBAR_SLOTS));
     this.hotbarPage = ((this.hotbarPage + dir) % pages + pages) % pages;
     this.renderHotbar();
+    if (this.invPanelOpen && this.invTab === 'items') this.renderInventory(); // 창에서도 핫바 줄이 바뀐 걸 보여 준다
   }
 
   // 마인크래프트식 한 줄 핫바: 가진 것 9칸씩, Shift+휠로 다음 줄
@@ -190,7 +204,11 @@ export class UI {
       const it = list[start + i];
       const d = document.createElement('div');
       d.className = 'slot' + (it ? '' : ' empty');
-      if (it) { d.innerHTML = `<span class="ic">${it.icon}</span><b>${it.n}</b>`; d.title = `${it.name} ×${it.n} — ${it.desc}`; }
+      if (it) {
+        d.innerHTML = `<span class="ic">${it.icon}</span><b>${it.n}</b>`;
+        d.title = `${it.name} ×${it.n} — ${it.desc}${it.sate ? ' (클릭해서 먹기)' : ''}`;
+        if (it.sate) { d.classList.add('edible'); d.addEventListener('click', () => this.onEat?.(it.id)); }
+      }
       slots.appendChild(d);
     }
     this.$('hotbarPage').textContent = pages > 1 ? `${this.hotbarPage + 1} / ${pages}  (Shift+휠)` : '';
@@ -204,20 +222,37 @@ export class UI {
     box.innerHTML = '';
     if (!inv) return;
     if (this.invTab === 'items') {
+      // 마인크래프트식 가방: 9칸 × 4줄 = 36칸. 가진 것이 사전 순서대로 칸을 채운다.
+      // 아래 한 줄이 화면의 핫바(hotbarPage 번째 줄)이고, 위 27칸은 나머지 세 줄이다.
       const list = inv.list();
-      if (!list.length) { box.innerHTML = '<div class="empty">아직 아무것도 없어요. 현관문으로 나가 들판의 동물을 사냥하거나 텃밭의 호박·숲의 버섯을 따 보세요.</div>'; return; }
-      for (const group of [['재료', (it) => !it.tags.includes('dish')], ['요리', (it) => it.tags.includes('dish')]]) {
-        const items = list.filter(group[1]);
-        if (!items.length) continue;
-        const h = document.createElement('h4'); h.textContent = group[0]; box.appendChild(h);
-        const grid = document.createElement('div'); grid.className = 'grid';
-        for (const it of items) {
-          const d = document.createElement('div'); d.className = 'item';
-          d.innerHTML = `<span class="ic">${it.icon}</span><div><div class="nm">${it.name} <b>×${it.n}</b>${it.sate ? ` <small>포만감 ${it.sate}</small>` : ''}</div><div class="ds">${it.desc}</div></div>`;
-          grid.appendChild(d);
+      const rows = Math.max(1, Math.ceil(list.length / HOTBAR_SLOTS));
+      if (this.hotbarPage >= rows) this.hotbarPage = rows - 1;
+      const info = document.createElement('div'); info.className = 'mcinfo';
+      const idle = list.length
+        ? '칸에 마우스를 올리면 설명이 보여요. 아래 줄이 화면 아래 핫바예요 (Shift+휠로 줄 바꾸기)'
+        : '아직 아무것도 없어요. 현관문으로 나가 들판의 동물을 사냥하거나 텃밭의 호박·숲의 버섯을 따 보세요.';
+      info.textContent = idle;
+      const slotEl = (it) => {
+        const d = document.createElement('div');
+        d.className = 'slot' + (it ? '' : ' empty');
+        if (it) {
+          d.innerHTML = `<span class="ic">${it.icon}</span><b>${it.n}</b>`;
+          d.addEventListener('mouseenter', () => { info.textContent = `${it.icon} ${it.name} ×${it.n}${it.sate ? ` · 포만감 ${it.sate}` : ''} — ${it.desc}`; });
+          d.addEventListener('mouseleave', () => { info.textContent = idle; });
+          if (it.sate) { d.classList.add('edible'); d.addEventListener('click', () => this.onEat?.(it.id)); } // 요리는 클릭해서 먹는다
         }
-        box.appendChild(grid);
+        return d;
+      };
+      const wrap = document.createElement('div'); wrap.className = 'mcwrap';
+      const main = document.createElement('div'); main.className = 'mc';
+      for (let r = 0; r < 4; r++) {
+        if (r === this.hotbarPage) continue;
+        for (let i = 0; i < HOTBAR_SLOTS; i++) main.appendChild(slotEl(list[r * HOTBAR_SLOTS + i]));
       }
+      const bar = document.createElement('div'); bar.className = 'mc hot';
+      for (let i = 0; i < HOTBAR_SLOTS; i++) bar.appendChild(slotEl(list[this.hotbarPage * HOTBAR_SLOTS + i]));
+      wrap.append(main, bar);
+      box.append(wrap, info);
     } else {
       const hint = document.createElement('div'); hint.className = 'hint';
       hint.textContent = this.nearStove ? '가스레인지 앞입니다. 재료가 있는 요리는 "요리" 버튼이 켜져요.' : '요리는 주방 가스레인지 앞에서 E 를 눌러 이 창을 열면 만들 수 있어요.';
@@ -242,6 +277,82 @@ export class UI {
         box.appendChild(row);
       }
     }
+  }
+
+  // --- 체력·배고픔·돈·시각 HUD (31단계) ---
+  setVitals(v, timeText) {
+    const c = this._vitals;
+    const hp = Math.round(v.health), food = Math.round(v.hunger);
+    if (c.hp !== hp) { c.hp = hp; this.$('hpFill').style.width = hp + '%'; this.$('hpText').textContent = `❤ ${hp}`; this.$('hpBar').classList.toggle('low', hp < 25); }
+    if (c.food !== food) { c.food = food; this.$('foodFill').style.width = food + '%'; this.$('foodText').textContent = `🍗 ${food}`; this.$('foodBar').classList.toggle('low', food < 20); }
+    if (c.money !== v.money) { c.money = v.money; this.$('money').textContent = `💰 ${v.money}원`; }
+    if (c.time !== timeText) { c.time = timeText; this.$('clock').textContent = timeText; }
+  }
+
+  // --- 상점 (33단계): 왼쪽은 내가 팔 수 있는 것, 오른쪽은 상인이 파는 것 ---
+  get shopPanelOpen() {
+    return !this.shopPanel.classList.contains('hidden');
+  }
+
+  openShop(vendor, ctx) {
+    this.shopVendor = vendor;
+    this.shopCtx = ctx;
+    this.panel.classList.add('hidden'); this.weaponPanel.classList.add('hidden'); this.charPanel.classList.add('hidden'); this.invPanel.classList.add('hidden');
+    this.shopPanel.classList.remove('hidden');
+    this.renderShop();
+    this.onPanelsChanged?.();
+  }
+
+  toggleShop(force) {
+    const open = force === undefined ? !this.shopPanelOpen : force;
+    if (open && !this.shopVendor) return;
+    this.shopPanel.classList.toggle('hidden', !open);
+    this.onPanelsChanged?.();
+  }
+
+  renderShop() {
+    const v = this.shopVendor, { inv, vitals, priceOf } = this.shopCtx || {};
+    if (!v || !inv) return;
+    this.$('shopTitle').textContent = `${v.name} — ${v.greet}`;
+    this.$('shopMoney').textContent = `💰 ${vitals.money}원`;
+    const sell = this.$('shopSell');
+    sell.innerHTML = '';
+    const mine = inv.list().filter((it) => v.buys(it.id));
+    if (!mine.length) sell.innerHTML = '<div class="empty">이 상인이 사는 물건이 가방에 없어요</div>';
+    for (const it of mine) {
+      const p = priceOf(it.id);
+      const row = document.createElement('div');
+      row.className = 'trade';
+      row.innerHTML = `<span class="ic">${it.icon}</span><div><div class="nm">${it.name} <b>×${it.n}</b></div><div class="ds">${p}원 / 개</div></div>`;
+      const one = document.createElement('button'); one.textContent = '1개'; one.addEventListener('click', () => this.onSell?.(it.id, 1));
+      const all = document.createElement('button'); all.textContent = `전부 (${p * it.n}원)`; all.addEventListener('click', () => this.onSell?.(it.id, it.n));
+      row.append(one, all);
+      sell.appendChild(row);
+    }
+    const buy = this.$('shopBuy');
+    buy.innerHTML = '';
+    if (!v.sells.length) buy.innerHTML = '<div class="empty">파는 물건이 없어요</div>';
+    for (const e of v.sells) {
+      const row = document.createElement('div');
+      row.className = 'trade';
+      const label = e.ammo ? `${e.name} ${e.n}발` : `${ITEMS[e.item].icon} ${ITEMS[e.item].name}`;
+      row.innerHTML = `<span class="ic">${e.ammo ? '🔫' : ITEMS[e.item].icon}</span><div><div class="nm">${label}</div><div class="ds">${e.price}원</div></div>`;
+      const b = document.createElement('button'); b.textContent = '사기'; b.disabled = vitals.money < e.price; b.addEventListener('click', () => this.onBuy?.(e));
+      row.appendChild(b);
+      buy.appendChild(row);
+    }
+  }
+
+  // --- 전체 지도 (34단계, M) ---
+  get mapPanelOpen() {
+    return !this.$('mapPanel').classList.contains('hidden');
+  }
+
+  toggleMap(force) {
+    const open = force === undefined ? !this.mapPanelOpen : force;
+    this.$('mapPanel').classList.toggle('hidden', !open);
+    if (open) { this.panel.classList.add('hidden'); this.weaponPanel.classList.add('hidden'); this.charPanel.classList.add('hidden'); this.invPanel.classList.add('hidden'); this.shopPanel.classList.add('hidden'); }
+    this.onPanelsChanged?.();
   }
 
   get gamePanelOpen() {
@@ -313,20 +424,20 @@ export class UI {
   }
 
   get anyPanelOpen() {
-    return this.panelOpen || this.weaponPanelOpen || this.charPanelOpen || this.gamePanelOpen || this.invPanelOpen;
+    return this.panelOpen || this.weaponPanelOpen || this.charPanelOpen || this.gamePanelOpen || this.invPanelOpen || this.shopPanelOpen || this.mapPanelOpen;
   }
 
   togglePanel(force) {
     const open = force === undefined ? !this.panelOpen : force;
     this.panel.classList.toggle('hidden', !open);
-    if (open) { this.weaponPanel.classList.add('hidden'); this.charPanel.classList.add('hidden'); this.invPanel.classList.add('hidden'); }
+    if (open) { this.weaponPanel.classList.add('hidden'); this.charPanel.classList.add('hidden'); this.shopPanel.classList.add('hidden'); this.invPanel.classList.add('hidden'); }
     this.onPanelsChanged?.();
   }
 
   toggleWeaponPanel(force) {
     const open = force === undefined ? !this.weaponPanelOpen : force;
     this.weaponPanel.classList.toggle('hidden', !open);
-    if (open) { this.panel.classList.add('hidden'); this.charPanel.classList.add('hidden'); this.invPanel.classList.add('hidden'); }
+    if (open) { this.panel.classList.add('hidden'); this.charPanel.classList.add('hidden'); this.shopPanel.classList.add('hidden'); this.invPanel.classList.add('hidden'); }
     this.onPanelsChanged?.();
   }
 
@@ -338,6 +449,7 @@ export class UI {
     this.$('charName').value = skin ? skin.name : '';
     this.panel.classList.add('hidden');
     this.weaponPanel.classList.add('hidden');
+    this.shopPanel.classList.add('hidden');
     this.charPanel.classList.remove('hidden');
     this.onPanelsChanged?.();
     this.onCustomizerOpen?.(); // 카메라를 얼굴 쪽으로
@@ -460,7 +572,7 @@ export class UI {
     const saved = this.charEditing && !this.charEditing.builtin
       ? this.skins.updateCustom(this.charEditing.id, this.charParams, name, extra)
       : this.skins.addCustom(name || (this.charEditing ? this.charEditing.name + ' (수정)' : ''), this.charParams, extra);
-    this.charPanel.classList.add('hidden');
+    this.charPanel.classList.add('hidden'); this.shopPanel.classList.add('hidden');
     this.charEditing = null;
     this.refresh();
     await this.select(saved); // 저장본으로 다시 불러와 선택 상태를 맞춘다
@@ -468,7 +580,7 @@ export class UI {
   }
 
   async cancelCustomizer() {
-    this.charPanel.classList.add('hidden');
+    this.charPanel.classList.add('hidden'); this.shopPanel.classList.add('hidden');
     this.charEditing = null;
     const prev = this.skins.get(this.charPrevId);
     this.refresh();
@@ -500,10 +612,10 @@ export class UI {
       edit.textContent = '✎';
       edit.addEventListener('click', () => this.startRename(row, btn, skin));
       row.appendChild(edit);
-      if (!skin.builtin) {
+      if (!skin.builtin || skin.catalog) {
         const del = document.createElement('button');
         del.className = 'del';
-        del.title = '삭제';
+        del.title = skin.catalog ? '목록에서 빼기 (스킨 목록으로 돌아감)' : '삭제';
         del.textContent = '×';
         del.addEventListener('click', async () => {
           const wasSelected = skin.id === this.skins.selectedId;
@@ -515,6 +627,44 @@ export class UI {
       }
       this.list.appendChild(row);
     }
+    this.refreshCatalog();
+  }
+
+  // 드롭다운에는 아직 목록에 없는 카탈로그 스킨만, 그룹(기타/여성/남성)별로 보여 준다
+  refreshCatalog() {
+    const sel = this.$('skinCatalog');
+    const prev = sel.value;
+    sel.innerHTML = '';
+    const groups = new Map();
+    for (const skin of this.skins.catalogAvailable()) {
+      if (!groups.has(skin.group)) {
+        const og = document.createElement('optgroup');
+        og.label = skin.group;
+        groups.set(skin.group, og);
+        sel.appendChild(og);
+      }
+      const opt = document.createElement('option');
+      opt.value = skin.id;
+      opt.textContent = skin.name;
+      groups.get(skin.group).appendChild(opt);
+    }
+    const empty = sel.options.length === 0;
+    if (empty) {
+      const opt = document.createElement('option');
+      opt.textContent = '모두 추가했어요';
+      sel.appendChild(opt);
+    } else if ([...sel.options].some((o) => o.value === prev)) {
+      sel.value = prev;
+    }
+    sel.disabled = empty;
+    this.$('skinCatalogAdd').disabled = empty;
+  }
+
+  addFromCatalog() {
+    const skin = this.skins.addFromCatalog(this.$('skinCatalog').value);
+    if (!skin) return;
+    this.refresh();
+    this.select(skin);
   }
 
   // 이름 버튼을 입력창으로 바꾼다. Enter 로 저장, Esc 로 취소, 비우면 원래 이름

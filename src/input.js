@@ -21,6 +21,8 @@ export class Input {
     this.onWheelKey = null;     // T 키 누름(true)/뗌(false) 콜백 — 무기 휠
     this.onMove = null;         // 마우스 이동 원시 콜백 (dx, dy) — 잠김/드래그와 무관하게 항상 호출
     this.onToggleInventory = null; // I 키 콜백 (인벤토리·요리 도감)
+    this.onEat = null;             // F 키 콜백 (가장 포만감 높은 요리 먹기)
+    this.onToggleMap = null;       // M 키 콜백 (전체 지도)
     this.onHotbarScroll = null;    // Shift+휠 또는 핫바 위에서 휠: 핫바 다음/이전 줄 (+1/-1)
 
     window.addEventListener('keydown', (e) => {
@@ -33,6 +35,8 @@ export class Input {
       if (e.code === 'KeyV' && this.onToggleView) this.onToggleView();
       if (e.code === 'Tab' && this.onToggleSkins) this.onToggleSkins();
       if (e.code === 'KeyI' && this.onToggleInventory) this.onToggleInventory();
+      if (e.code === 'KeyF' && this.onEat) this.onEat(); // 먹기 (31단계)
+      if (e.code === 'KeyM' && this.onToggleMap) this.onToggleMap(); // 지도 (34단계)
       if (e.code === 'KeyT' && this.onWheelKey) this.onWheelKey(true);
       if (this.onSelectWeapon) {
         if (/^Digit[1-9]$/.test(e.code)) this.onSelectWeapon(Number(e.code[5]) - 1);

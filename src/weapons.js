@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { playShot, playSwing, playPunch, playClick, playReload, playHitThud } from './audio.js';
+import { asset } from './paths.js';
 
 // 무기 정의. 총은 분당 발사수(rpm)·탄창(mag)·퍼짐(spread, rad)·반동(recoil, rad)·조준 FOV 로 성격을 나눈다.
 // zoom: 조준경 배율 단계 (1인칭에서 우클릭 더블클릭으로 다음 단계). mag > 1 이면 렌즈 안에 확대 화면(PIP)을 그린다.
 export const WEAPONS = [
   { id: 'pistol', name: '권총', key: '1', type: 'gun', auto: false, rpm: 320, mag: 12, reload: 1.3, pellets: 1, dmg: 1, spread: 0.012, aimSpread: 0.003, recoil: 0.018, aimFov: 50, sound: 'pistol' },
-  { id: 'rifle', name: '소총', key: '2', type: 'gun', auto: true, rpm: 650, mag: 30, reload: 2.0, pellets: 1, dmg: 1, spread: 0.02, aimSpread: 0.006, recoil: 0.01, aimFov: 45, zoom: [{ label: '도트', mag: 1 }, { label: '2.5x', mag: 2.5 }], sound: 'rifle' },
+  { id: 'rifle', name: '소총', key: '2', type: 'gun', auto: true, rpm: 650, mag: 30, reload: 2.0, pellets: 1, dmg: 1, spread: 0.02, aimSpread: 0.006, recoil: 0.01, aimFov: 45, zoom: [{ label: '홀로', mag: 1 }, { label: '2.5x', mag: 2.5 }], sound: 'rifle' },
   { id: 'shotgun', name: '산탄총', key: '3', type: 'gun', auto: false, rpm: 70, mag: 6, reload: 2.4, pellets: 8, dmg: 1, spread: 0.05, aimSpread: 0.035, recoil: 0.05, aimFov: 55, sound: 'shotgun' },
   { id: 'sniper', name: '저격총', key: '4', type: 'gun', auto: false, rpm: 40, mag: 5, reload: 2.6, pellets: 1, dmg: 3, spread: 0.04, aimSpread: 0, recoil: 0.06, aimFov: 40, zoom: [{ label: '4x', mag: 4 }, { label: '8x', mag: 8 }], sound: 'sniper' },
   // 칼: 좌클릭 베기(빠름, 5점) · 우클릭 찌르기(느리지만 길고 10점). stab 은 찌르기 전용 수치
@@ -49,10 +50,47 @@ function canvasTex(size, draw) {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-let _reticleTex = null, _dotTex = null;
-// 십자선 + 눈금 (렌즈 위에 겹치는 투명 텍스처)
+// 레티클 그림: Kenney Crosshair Pack (CC0, public/models/crosshair/). SVG 를 캔버스에 그려 색을 입힌 뒤 텍스처로 쓴다.
+// 로드가 끝나기 전에는 빈 텍스처라서 잠깐 아무것도 안 보일 수 있다 (needsUpdate 로 채워진다)
+function svgTex(url, size, draw) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const tex = new THREE.CanvasTexture(c);
+  const img = new Image();
+  img.onload = () => { draw(c.getContext('2d'), size, img); tex.needsUpdate = true; };
+  img.src = url;
+  return tex;
+}
+let _reticleTex = null, _dotTex = null, _holoTex = null;
+// 저격 스코프: 십자선 + 탄도 낙차 눈금 (crosshair-067), 검정
 function reticleTex() {
-  return _reticleTex ||= canvasTex(512, (ctx, s) => {
+  return _reticleTex ||= svgTex(asset('models/crosshair/scope.svg'), 512, (ctx, s, img) => {
+    const k = s * 0.98, o = (s - k) / 2;
+    ctx.drawImage(img, o, o, k, k);
+    ctx.globalCompositeOperation = 'source-in'; // 그림의 알파만 남기고 색을 통째로 바꾼다
+    ctx.fillStyle = 'rgba(0,0,0,0.92)';
+    ctx.fillRect(0, 0, s, s);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(200,0,0,0.9)'; // 가운데 빨간 점
+    ctx.beginPath(); ctx.arc(s / 2, s / 2, 3, 0, Math.PI * 2); ctx.fill();
+  });
+}
+// 홀로그램 조준기: 링 + 가운데 점 (crosshair-087) 을 빨갛게, 번지는 빛(shadowBlur)과 함께
+function holoTex() {
+  return _holoTex ||= svgTex(asset('models/crosshair/holo.svg'), 512, (ctx, s, img) => {
+    const k = s * 0.74, o = (s - k) / 2;
+    ctx.shadowColor = 'rgba(255,70,70,1)';
+    ctx.shadowBlur = s * 0.035;
+    ctx.drawImage(img, o, o, k, k);
+    ctx.drawImage(img, o, o, k, k); // 두 번 그려 발광을 진하게
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.fillStyle = '#ff4040';
+    ctx.fillRect(0, 0, s, s);
+  });
+}
+// (예전 코드) 캔버스로 직접 그린 십자선. Kenney 그림이 못 뜰 때 비교용으로 남겨 둔다
+function drawnReticleTex() {
+  return canvasTex(512, (ctx, s) => {
     const c = s / 2;
     ctx.strokeStyle = 'rgba(0,0,0,0.9)';
     ctx.lineWidth = 2;
@@ -145,9 +183,9 @@ export function buildWeaponModel(id, { shadows = true } = {}) {
       add(box(0.03, 0.09, 0.035), m.dark, 0, -0.07, 0.05, -0.3); // 손잡이
       add(box(0.03, 0.15, 0.07), m.steel, 0, -0.1, -0.1, 0.2);   // 탄창
       add(box(0.02, 0.025, 0.08), m.dark, 0, 0.04, -0.1);        // 조준경 마운트
-      optic(0.02, 0.1, 0.075, -0.12, 0.017);                     // 가변 배율 조준경 (도트 / 2.5x)
+      optic(0.023, 0.1, 0.075, -0.12, 0.02);                     // 가변 배율 조준경 (홀로그램 / 2.5x)
       muzzle = [0, 0.005, -0.69];
-      g.userData.eyeDist = 0.18;
+      g.userData.eyeDist = 0.15;
       break;
     case 'shotgun':
       add(tube(0.012, 0.6), m.steel, 0, 0.02, -0.4, X);          // 총열
@@ -167,12 +205,12 @@ export function buildWeaponModel(id, { shadows = true } = {}) {
       add(box(0.015, 0.03, 0.02), m.dark, 0, 0.04, -0.04);
       add(tube(0.018, 0.2), m.dark, 0, 0.065, -0.1, X);          // 스코프 몸통
       add(tube(0.022, 0.05), m.dark, 0, 0.065, -0.2, X);         // 대물렌즈 쪽
-      optic(0.024, 0.06, 0.065, 0.02, 0.021);                    // 접안렌즈 (4x / 8x)
+      optic(0.033, 0.06, 0.065, 0.02, 0.03);                     // 접안렌즈 (4x / 8x). 크고(0.03) 눈에 가까워(0.11) 화면의 3/4 를 채운다
       add(box(0.04, 0.09, 0.3), m.wood, 0, -0.02, 0.2);          // 개머리판
       add(box(0.03, 0.09, 0.035), m.dark, 0, -0.07, 0.05, -0.3); // 손잡이
       add(box(0.03, 0.08, 0.06), m.steel, 0, -0.065, -0.1);      // 탄창
       muzzle = [0, 0.01, -0.78];
-      g.userData.eyeDist = 0.16;
+      g.userData.eyeDist = 0.11;
       break;
     case 'fists': {
       // 맨손: 양쪽 주먹 + 소매. userData.left/right 로 각각 움직인다
@@ -292,6 +330,8 @@ export class WeaponSystem {
     this.fx = new Effects(scene);
     this.current = null;
     this.ammo = Object.fromEntries(WEAPONS.filter((w) => w.mag).map((w) => [w.id, w.mag]));
+    // 예비 탄약 (33단계): 무한이 아니다. 광장 잡화점에서 산다
+    this.reserve = { pistol: 48, rifle: 120, shotgun: 24, sniper: 20 };
     this.cool = 0;
     this.reloadT = 0;
     this.aiming = false;
@@ -419,9 +459,14 @@ export class WeaponSystem {
 
   reload() {
     const w = this.current;
-    if (!w || !w.mag || this.reloadT > 0 || this.ammo[w.id] >= w.mag) return;
+    if (!w || !w.mag || this.reloadT > 0 || this.ammo[w.id] >= w.mag || !this.reserve[w.id]) return;
     this.reloadT = w.reload;
     playReload(w.reload);
+  }
+
+  addAmmo(id, n) {
+    if (this.reserve[id] === undefined) return;
+    this.reserve[id] += n;
   }
 
   resetStats() {
@@ -466,7 +511,12 @@ export class WeaponSystem {
     if (w) {
       if (this.reloadT > 0) {
         this.reloadT -= dt;
-        if (this.reloadT <= 0) { this.reloadT = 0; this.ammo[w.id] = w.mag; }
+        if (this.reloadT <= 0) {
+          this.reloadT = 0;
+          const take = Math.min(w.mag - this.ammo[w.id], this.reserve[w.id] || 0); // 예비에서 모자란 만큼만 채운다
+          this.ammo[w.id] += take;
+          this.reserve[w.id] -= take;
+        }
       }
       const wantFire = w.auto ? input.mouseDown(0) : input.pressed('Mouse0');
       if (canFire && wantFire && this.cool <= 0 && this.reloadT <= 0) {
@@ -498,10 +548,11 @@ export class WeaponSystem {
     if (w) {
       let status = '';
       if (this.reloadT > 0) status = '재장전 중...';
+      else if (w.mag && this.ammo[w.id] === 0 && !this.reserve[w.id]) status = '탄약 없음 · 광장 잡화점에서 구매';
       else if (w.mag && this.ammo[w.id] === 0) status = 'R 재장전';
-      else if (w.zoom) status = `배율 ${step.label}${first ? ' · 우클릭 더블클릭 전환' : ''}`;
+      else if (w.zoom) status = `배율 ${step.label}${first ? ' · 우클릭 더블클릭 전환' : ' · 우클릭 = 스코프 보기'}`;
       else if (w.type === 'melee') status = '좌클릭 베기 · 우클릭 찌르기';
-      this.ui.setWeaponHud(w.name, w.mag ? `${this.ammo[w.id]} / ∞` : '—', status);
+      this.ui.setWeaponHud(w.name, w.mag ? `${this.ammo[w.id]} / ${this.reserve[w.id]}` : '—', status);
       const spread = w.type === 'gun' ? (this.aiming ? w.aimSpread : w.spread) + this.heat * 0.01 : 0;
       this.ui.setCrosshair(!this.opticAim, 6 + spread * 900);
     } else {
@@ -553,8 +604,9 @@ export class WeaponSystem {
         ud.reticle.material.needsUpdate = true;
         ud.reticle.visible = true;
       } else if (this.aiming && step && step.mag === 1) {
+        // 홀로그램 조준기: 옅은 창 + 빨갛게 빛나는 링·점. 확대는 없다
         ud.lens.material = this.dotGlassMat;
-        ud.reticle.material.map = dotTex();
+        ud.reticle.material.map = holoTex();
         ud.reticle.material.needsUpdate = true;
         ud.reticle.visible = true;
       } else {

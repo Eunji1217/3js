@@ -23,6 +23,15 @@
       }
       #hud button:hover { background: #eee; }
 
+      /* 쇼케이스 흐림 (29단계): 캔버스 위에 덮어 backdrop-filter 로 뒤를 흐리고, 마스크로 캐릭터 자리만 선명하게 남긴다 */
+      #focus {
+        position: fixed; inset: 0; z-index: 5; pointer-events: none; --fx: 50%;
+        background: rgba(20, 24, 32, 0.18);
+        backdrop-filter: blur(7px) saturate(0.85); -webkit-backdrop-filter: blur(7px) saturate(0.85);
+        -webkit-mask-image: radial-gradient(ellipse 240px 400px at var(--fx) 52%, transparent 0, transparent 55%, #000 100%);
+        mask-image: radial-gradient(ellipse 240px 400px at var(--fx) 52%, transparent 0, transparent 55%, #000 100%);
+      }
+      body.showcase #hud, body.showcase #hotbar, body.showcase #prompt { display: none; } /* 쇼케이스 동안 캐릭터를 가리는 HUD 는 숨긴다 */
       #prompt {
         position: fixed; left: 50%; bottom: 18%; transform: translateX(-50%); z-index: 10;
         background: rgba(0, 0, 0, 0.7); color: #fff; padding: 8px 16px; border-radius: 8px;
@@ -41,6 +50,8 @@
         padding: 12px 14px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
       }
       .panel h3 { margin: 0 0 8px; font-size: 15px; display: flex; justify-content: space-between; align-items: center; }
+      #skinPanel { max-height: calc(100vh - 24px); overflow-y: auto; box-sizing: border-box; }
+      .panel .add select { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #bbb; border-radius: 6px; font: inherit; background: #fff; }
       .panel h3 button { border: 0; background: none; font-size: 18px; cursor: pointer; }
       .skin { display: flex; gap: 6px; margin-bottom: 6px; }
       .skin button { flex: 1; text-align: left; padding: 6px 10px; border: 1px solid #bbb; border-radius: 6px; background: #fff; cursor: pointer; font: inherit; }
@@ -134,15 +145,58 @@
 
       /* 핫바 (가진 재료·요리 한 줄, Shift+휠로 다음 줄) */
       #hotbar { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 15; text-align: center; user-select: none; }
+      .slot.edible { cursor: pointer; box-shadow: inset 0 0 0 1px rgba(255, 220, 120, 0.6); }
+      /* 체력·배고픔·돈·시각 (31단계): 핫바 바로 위 */
+      #vitals { position: fixed; left: 50%; bottom: 86px; transform: translateX(-50%); z-index: 15; display: flex; gap: 8px; align-items: center; user-select: none; pointer-events: none; }
+      #vitals .bar { position: relative; width: 150px; height: 18px; background: rgba(0, 0, 0, 0.55); border: 2px solid rgba(255, 255, 255, 0.35); border-radius: 9px; overflow: hidden; }
+      #vitals .bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; transition: width 0.15s; }
+      #vitals #hpBar i { background: linear-gradient(#ff6b6b, #c62828); }
+      #vitals #foodBar i { background: linear-gradient(#ffb74d, #e65100); }
+      #vitals .bar.low i { animation: lowblink 0.8s infinite alternate; }
+      @keyframes lowblink { from { opacity: 1; } to { opacity: 0.45; } }
+      #vitals .bar span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; }
+      #vitals .pill { background: rgba(0, 0, 0, 0.55); color: #fff; padding: 2px 10px; border-radius: 9px; font-size: 13px; font-weight: 600; text-shadow: 0 0 3px #000; white-space: nowrap; }
+      /* 맞았을 때 붉은 테두리, 잠들기·쓰러지기 암전 */
+      #hurt { position: fixed; inset: 0; z-index: 12; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(200, 0, 0, 0.75) 100%); }
+      #fade { position: fixed; inset: 0; z-index: 25; pointer-events: none; opacity: 0; background: #000; }
+      body.showcase #vitals { display: none; }
+      /* 지도 (34단계): 오른쪽 위 미니맵 + M 전체 지도 */
+      #minimap { position: fixed; right: 12px; top: 12px; width: 190px; height: 190px; z-index: 9; pointer-events: none; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35)); }
+      body.showcase #minimap { display: none; }
+      #mapPanel { width: auto; left: 50%; top: 50%; right: auto; transform: translate(-50%, -50%); max-height: calc(100vh - 24px); box-sizing: border-box; }
+      #mapBig { display: block; width: min(640px, 80vh, 90vw); height: min(640px, 80vh, 90vw); border-radius: 8px; border: 2px solid #666; background: #4b6b3a; }
+      #mapPanel .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 12px; color: #444; }
+      #mapPanel .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+      /* 상점 (33단계): 화면 가운데, 팔기 | 사기 두 칸 */
+      #shopPanel { width: 620px; left: 50%; top: 50%; right: auto; transform: translate(-50%, -50%); max-height: calc(100vh - 24px); overflow-y: auto; box-sizing: border-box; }
+      #shopPanel .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      #shopPanel h4 { margin: 6px 0 4px; font-size: 13px; color: #555; }
+      #shopPanel #shopMoney { font-weight: 700; color: #8a6d00; margin-bottom: 4px; }
+      #shopPanel .trade { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid #e5e5e5; border-radius: 8px; font-size: 13px; margin-top: 6px; }
+      #shopPanel .trade > div { flex: 1; }
+      #shopPanel .trade .ic { font-size: 22px; line-height: 1; }
+      #shopPanel .trade .nm { font-weight: 600; }
+      #shopPanel .trade .ds { font-size: 12px; color: #666; }
+      #shopPanel .trade button { padding: 4px 8px; border: 1px solid #2b7cff; border-radius: 6px; background: #2b7cff; color: #fff; cursor: pointer; font: inherit; font-size: 12px; white-space: nowrap; }
+      #shopPanel .trade button:disabled { background: #eee; border-color: #ccc; color: #999; cursor: default; }
+      #shopPanel .empty { font-size: 12px; color: #666; margin-top: 6px; }
       #hotbarSlots { display: flex; gap: 4px; padding: 4px; background: rgba(0, 0, 0, 0.55); border-radius: 8px; }
-      #hotbar .slot { width: 44px; height: 44px; border: 2px solid rgba(255, 255, 255, 0.35); border-radius: 6px; background: rgba(255, 255, 255, 0.08); position: relative; display: flex; align-items: center; justify-content: center; }
-      #hotbar .slot.empty { opacity: 0.5; }
-      #hotbar .slot .ic { font-size: 24px; line-height: 1; }
-      #hotbar .slot b { position: absolute; right: 3px; bottom: 1px; font-size: 12px; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; }
+      .slot { width: 44px; height: 44px; border: 2px solid rgba(255, 255, 255, 0.35); border-radius: 6px; background: rgba(255, 255, 255, 0.08); position: relative; display: flex; align-items: center; justify-content: center; }
+      .slot.empty { opacity: 0.5; }
+      .slot .ic { font-size: 24px; line-height: 1; }
+      .slot b { position: absolute; right: 3px; bottom: 1px; font-size: 12px; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; }
       #hotbarPage { font-size: 11px; color: #fff; text-shadow: 0 0 3px #000; margin-top: 3px; min-height: 14px; }
 
       /* 인벤토리 / 요리 도감 (E, I) */
-      #invPanel { width: 420px; max-height: calc(100vh - 24px); overflow-y: auto; box-sizing: border-box; }
+      /* 인벤토리 창은 화면 가운데 (마인크래프트처럼). 가방 탭은 9×3 칸 + 핫바 한 줄 */
+      #invPanel { width: 480px; left: 50%; top: 50%; right: auto; transform: translate(-50%, -50%); max-height: calc(100vh - 24px); overflow-y: auto; box-sizing: border-box; }
+      #invPanel .mcwrap { background: #c6c6c6; border: 2px solid; border-color: #fff #555 #555 #fff; border-radius: 4px; padding: 8px; }
+      #invPanel .mc { display: grid; grid-template-columns: repeat(9, 44px); gap: 4px; justify-content: center; }
+      #invPanel .mc.hot { margin-top: 10px; padding-top: 10px; border-top: 2px solid #9a9a9a; }
+      #invPanel .mc .slot { background: #8b8b8b; border: 2px solid; border-color: #373737 #fff #fff #373737; border-radius: 2px; cursor: default; }
+      #invPanel .mc .slot.empty { opacity: 1; }
+      #invPanel .mc .slot:not(.empty):hover { background: #a8a8a8; }
+      #invPanel .mcinfo { min-height: 36px; font-size: 12px; color: #444; line-height: 1.5; margin: 8px 2px 0; }
       #invPanel .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
       #invPanel .tabs button { flex: 1; padding: 5px 0; border: 1px solid #bbb; border-radius: 6px; background: #fff; cursor: pointer; font: inherit; }
       #invPanel .tabs button.active { background: #2b7cff; border-color: #2b7cff; color: #fff; }
@@ -213,6 +267,16 @@
     <div id="loading">모델 불러오는 중...</div>
     <div id="toast" class="hidden"></div>
     <div id="prompt" class="hidden"></div>
+    <div id="focus" class="hidden"></div>
+    <div id="hurt"></div>
+    <div id="fade"></div>
+    <canvas id="minimap" width="190" height="190"></canvas>
+    <div id="vitals">
+      <div class="bar" id="hpBar"><i id="hpFill"></i><span id="hpText">❤ 100</span></div>
+      <div class="bar" id="foodBar"><i id="foodFill"></i><span id="foodText">🍗 100</span></div>
+      <div class="pill" id="money">💰 0원</div>
+      <div class="pill" id="clock">☀️ 1일차 06:00</div>
+    </div>
     <div id="scope" class="hidden"></div>
     <div id="crosshair" class="hidden"><i></i><i></i><i></i><i></i><b></b></div>
     <div id="hitPop" class="hidden"></div>
@@ -230,12 +294,16 @@
       <div><b>Shift</b> 달리기 · <b>Space</b> 점프</div>
       <div><b>마우스</b> 시점 회전 (클릭해 잠금 · ESC 해제) · <b>- / =</b> 카메라 거리</div>
       <div><b>V</b> 1인칭 / 3인칭 전환</div>
-      <div><b>E</b> 문 · 무기 선반 · 재료 줍기/따기 · 요리 (가스레인지 앞) · 아무것도 없으면 인벤토리</div>
-      <div><b>I</b> 인벤토리 / 요리 도감 · <b>Shift+휠</b> 핫바 다음 줄</div>
+      <div><b>E</b> 문 · 무기 선반 · 재료 줍기/따기 · 요리 (가스레인지 앞)</div>
+      <div><b>I</b> 인벤토리 (36칸, 배합법은 창 안의 버튼) · <b>Shift+휠</b> 핫바 줄 바꾸기</div>
+      <div><b>F</b> 먹기 (가장 포만감 높은 요리) · 인벤토리·핫바의 요리 칸을 클릭해도 먹어요</div>
+      <div><b>생존</b> 배고픔은 시간이 지나면 줄고 0 이면 체력이 닳아요. 침대 앞에서 <b>E</b> 잠자기 → 아침 + 체력 회복. 큰 동물은 맞으면 반격해요</div>
+      <div><b>광장</b> 마당 동쪽 울타리 문 → 돌길 끝. 노점 앞에서 <b>E</b> 로 고기·요리 팔고 탄약·재료 사기</div>
+      <div><b>M</b> 전체 지도 · 오른쪽 위 미니맵에 동물(빨강)·재료(노랑)·상인(파랑)이 점으로 보여요</div>
       <div><b>T (누르기)</b> 무기 휠 · <b>1 ~ 5</b> 바로 선택 · <b>X</b> 넣기</div>
       <div><b>휠 스크롤</b> 무기 넘기기 (맨손에서도)</div>
       <div><b>좌클릭</b> 사격 / 칼 베기 / 주먹 · <b>우클릭</b> 조준 / 칼 찌르기 · <b>R</b> 재장전</div>
-      <div><b>우클릭 2번</b> 조준경 배율 전환 (1인칭 소총 · 저격총)</div>
+      <div><b>우클릭</b> 소총·저격총은 3인칭에서도 누르고 있는 동안 스코프 시점 · <b>우클릭 2번</b> 배율 전환</div>
       <div><b>G</b> 연습 게임 시작 / 중지 (사격장 안에서 · 60초 · 움직이는 표적)</div>
       <div><b>사냥</b> 현관문 → 마당 → 울타리 밖 들판의 동물을 쏘면 종류별 재료를 떨어뜨려요. 텃밭 호박·숲 버섯도 따요</div>
       <div id="mode">모드: 3인칭</div>
@@ -269,9 +337,33 @@
     <div id="hotbar" class="hidden"><div id="hotbarSlots"></div><div id="hotbarPage"></div></div>
 
     <div id="invPanel" class="panel hidden">
-      <h3>인벤토리 · 요리 도감 <button id="invClose" title="닫기">×</button></h3>
-      <div class="tabs"><button data-tab="items">재료 · 요리</button><button data-tab="recipes">배합법 (도감)</button></div>
+      <h3>인벤토리 <button id="invClose" title="닫기">×</button></h3>
+      <div class="tabs"><button data-tab="items">🎒 가방</button><button data-tab="recipes">📖 배합법 (도감)</button></div>
       <div id="invBody"></div>
+    </div>
+
+    <div id="mapPanel" class="panel hidden">
+      <h3>지도 (M) <button id="mapClose" title="닫기">×</button></h3>
+      <canvas id="mapBig" width="640" height="640"></canvas>
+      <div class="legend">
+        <span><i style="background:#fff;border:1px solid #000"></i>나</span>
+        <span><i style="background:#ff3b3b"></i>동물</span>
+        <span><i style="background:#ff8a1f"></i>쫓아오는 동물</span>
+        <span><i style="background:#ffe34d"></i>떨어진 재료</span>
+        <span><i style="background:#5ee36b"></i>호박·버섯</span>
+        <span><i style="background:#3b7bff"></i>상인</span>
+        <span><i style="background:#ff9a3c"></i>문</span>
+        <span>위쪽이 북쪽(동물 들판). 미니맵은 보는 방향이 위</span>
+      </div>
+    </div>
+
+    <div id="shopPanel" class="panel hidden">
+      <h3><span id="shopTitle">상점</span> <button id="shopClose" title="닫기">×</button></h3>
+      <div id="shopMoney">💰 0원</div>
+      <div class="cols">
+        <div><h4>팔기 (내 가방)</h4><div id="shopSell"></div></div>
+        <div><h4>사기</h4><div id="shopBuy"></div></div>
+      </div>
     </div>
 
     <div id="gamePanel" class="panel hidden">
@@ -313,8 +405,13 @@
 
     <div id="skinPanel" class="panel hidden">
       <h3>스킨 선택 <button id="skinClose" title="닫기">×</button></h3>
+      <div class="help" style="margin: 0 0 8px;">가만히 두면 천천히 돌고, 화면을 클릭하면 멈춰요. 드래그로 돌려 보고 휠로 가까이/멀리.</div>
       <div id="skinList"></div>
       <div class="add">
+        <div class="row" style="margin-top: 0; margin-bottom: 10px;">
+          <select id="skinCatalog" title="스킨 목록: 군인, 남성/여성 의상"></select>
+          <button id="skinCatalogAdd">추가</button>
+        </div>
         <button id="charNew" class="primary" style="margin-bottom: 10px; background: #2b9c5b; border-color: #2b9c5b;">내 캐릭터 만들기 (얼굴 · 체형 · 의상)</button>
         <div class="row" style="margin-top: 0; margin-bottom: 8px;">
           <input id="skinName" placeholder="스킨 이름 (비우면 파일 이름)" maxlength="40" />

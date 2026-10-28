@@ -6,6 +6,7 @@ import { RANGE_ROOM, buildRange } from './range.js';
 import { createKit, KENNEY_SCALE } from './furniture.js';
 import { buildOutdoor, YARD, WILD, GROUND } from './outdoor.js';
 import { createAnimals } from './animals.js';
+import { buildTown, TOWN } from './town.js';
 
 export const WALL_H = 3;     // 천장 높이
 const T = 0.16;              // 벽 두께
@@ -211,6 +212,8 @@ export function createWorld() {
   // --- 집 밖: 땅, 울타리, 나무 (22단계) / 동물 (23단계) ---
   const outdoor = buildOutdoor({ group, colliders, shootables, wallMeshes, house: HOUSE });
   const animals = createAnimals({ group, shootables });
+  const town = buildTown({ group, colliders, shootables }); // 광장 (33단계)
+  const bedSpot = { center: new THREE.Vector3(3.5, 1, 3.6), label: '침대' }; // 잠자기 상호작용 기준점 (31단계)
 
   // --- 거울 (침실 왼쪽 벽) ---
   const mirror = new Reflector(new THREE.PlaneGeometry(1.6, 2.2), {
@@ -230,7 +233,8 @@ export function createWorld() {
   group.add(mirror);
 
   // --- 조명 ---
-  group.add(new THREE.HemisphereLight(0xffffff, 0xcfc8bb, 1.1));
+  const hemi = new THREE.HemisphereLight(0xffffff, 0xcfc8bb, 1.1);
+  group.add(hemi);
   const sun = new THREE.DirectionalLight(0xffffff, 2.0);
   sun.position.set(14, 6, 2);
   sun.target.position.set(11, 0, 0);
@@ -256,24 +260,25 @@ export function createWorld() {
   const bounds = { ...GROUND };
 
   // 실내 방 → 마당 → 들판 순으로 찾는다 (마당 영역이 집을 포함하므로 실내를 먼저 본다)
+  const inArea = (a, x, z) => x >= a.minX && x <= a.maxX && z >= a.minZ && z <= a.maxZ;
   const roomAt = (x, z) =>
     ROOMS.find((r) => x >= r.minX && x < r.maxX && z >= r.minZ && z <= r.maxZ) ||
-    (x >= YARD.minX && x <= YARD.maxX && z >= YARD.minZ && z <= YARD.maxZ ? YARD : WILD);
+    (inArea(YARD, x, z) ? YARD : inArea(TOWN, x, z) ? TOWN : WILD);
   const ceilingAt = (x, z) => (roomAt(x, z).outdoor ? 60 : WALL_H);
 
   // 정적 + 문 충돌 상자
   const allColliders = () => colliders.concat(doors.map((d) => d.collider));
 
-  // 매 프레임: 동물·고기 움직임, 해(그림자 카메라)를 플레이어 따라 옮기기
-  const sunOffset = new THREE.Vector3(14, 12, 6);
-  const update = (dt, playerPos) => {
-    animals.update(dt, playerPos);
-    sun.target.position.copy(playerPos);
-    sun.position.copy(playerPos).add(sunOffset);
+  // 매 프레임: 동물·고기 움직임, 상인 애니메이션. 해(그림자 카메라)는 daynight.js 가 플레이어를 따라 옮긴다 (30단계)
+  // playerSafe: 플레이어가 실내에 있으면 쫓아오던 동물이 포기한다
+  const update = (dt, playerPos, playerSafe = false) => {
+    animals.update(dt, playerPos, playerSafe);
+    town.update(dt);
   };
 
   return {
     group, colliders, allColliders, wallMeshes, shootables, doors, frontDoor, rooms: ROOMS, bounds, height: WALL_H,
-    roomAt, ceilingAt, mirror, range, furnitureReady, outdoor, animals, stove, update,
+    roomAt, ceilingAt, mirror, range, furnitureReady, outdoor, animals, stove, bedSpot, town, update,
+    lights: { sun, hemi, lamps: town.lights },
   };
 }
