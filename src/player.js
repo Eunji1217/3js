@@ -11,7 +11,8 @@ const RUN_SPEED = 5.0;
 const RADIUS = 0.35;    // 충돌용 반지름
 const TURN_SPEED = 12;  // 회전 보간 속도
 const GRAVITY = 20;
-const JUMP_SPEED = 7;   // 약 1.2m 점프
+const JUMP_SPEED = 7.6; // 약 1.44m 점프 (울타리 1.2m 를 여유 있게 넘는다)
+const STEP = 0.35;      // 이 높이까지는 걸어서 올라간다. 더 높은 상자는 점프해서 위에 올라선다
 
 const gltfLoader = new GLTFLoader();
 const fbxLoader = new FBXLoader();
@@ -344,12 +345,19 @@ export class Player {
     p.x += dx; this.resolve(p, world.bounds, colliders);
     p.z += dz; this.resolve(p, world.bounds, colliders);
 
+    // 바닥 높이: 지금 서 있는(또는 떨어지고 있는) 자리 아래의 가장 높은 상자 윗면. 아무것도 없으면 땅(0).
+    // 울타리·가구 위에 올라설 수 있고, 가장자리를 벗어나면 떨어진다 (6단계 확장)
+    const ground = this.groundAt(p, colliders);
+    if (this.grounded) {
+      if (p.y < ground) p.y = ground;              // 낮은 턱은 걸어서 올라간다
+      else if (p.y > ground + 0.01) this.grounded = false; // 발 밑이 비면 떨어진다
+    }
     // 중력
     if (!this.grounded) {
       this.vy -= GRAVITY * dt;
       p.y += this.vy * dt;
-      if (p.y <= 0) {
-        p.y = 0;
+      if (this.vy <= 0 && p.y <= ground) { // 내려오는 중에만 착지 (올라가는 중에 상자 윗면으로 튀어 오르지 않게)
+        p.y = ground;
         this.vy = 0;
         this.grounded = true;
       }
@@ -361,17 +369,29 @@ export class Player {
     this.group.rotation.y += diff * Math.min(1, TURN_SPEED * dt);
 
     // 애니메이션 상태 (점프 클립이 없어 공중에서는 Idle)
+    this.animState = !this.grounded || !moving ? 'idle' : running ? 'run' : 'walk'; // 멀티플레이에 보내는 동작 이름 (35단계)
     if (!this.grounded || !moving) this.play(this.idle);
     else this.play(running ? this.run : this.walk);
     if (this.mixer) this.mixer.update(dt);
+  }
+
+  // 플레이어 원이 걸쳐 있는 상자 중, 올라설 수 있는(윗면이 발보다 STEP 이내로 높거나 더 낮은) 가장 높은 윗면
+  groundAt(p, colliders) {
+    let g = 0;
+    for (const box of colliders) {
+      if (p.x + RADIUS <= box.min.x || p.x - RADIUS >= box.max.x || p.z + RADIUS <= box.min.z || p.z - RADIUS >= box.max.z) continue;
+      const top = box.max.y;
+      if (top <= p.y + STEP && top > g) g = top;
+    }
+    return g;
   }
 
   resolve(p, b, colliders) {
     p.x = THREE.MathUtils.clamp(p.x, b.minX + RADIUS, b.maxX - RADIUS);
     p.z = THREE.MathUtils.clamp(p.z, b.minZ + RADIUS, b.maxZ - RADIUS);
     for (const box of colliders) {
-      // 원(플레이어) vs 박스 XZ 충돌. 점프로 넘을 수 있는 낮은 상자는 통과
-      if (box.max.y <= p.y + 0.05) continue;
+      // 원(플레이어) vs 박스 XZ 충돌. 올라설 수 있는 높이의 상자는 옆에서 막지 않는다 (그 위에 서게 된다)
+      if (box.max.y <= p.y + STEP) continue;
       const cx = THREE.MathUtils.clamp(p.x, box.min.x, box.max.x);
       const cz = THREE.MathUtils.clamp(p.z, box.min.z, box.max.z);
       let ox = p.x - cx, oz = p.z - cz;

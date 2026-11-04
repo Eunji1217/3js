@@ -14,6 +14,7 @@ export class Input {
     this.wheel = 0;
     this.dragging = false;
     this.pointerLocked = false;
+    this.touch = null;         // 터치 조작판 (36단계). 붙어 있으면 잠금 없이도 사격·조준이 되고 조이스틱 값이 moveAxis 에 합쳐진다
     this.mouse = new Set();    // 눌려 있는 마우스 버튼 (0 왼쪽, 2 오른쪽)
     this.onToggleView = null;  // V 키 콜백
     this.onToggleSkins = null; // Tab 키 콜백
@@ -23,6 +24,8 @@ export class Input {
     this.onToggleInventory = null; // I 키 콜백 (인벤토리·요리 도감)
     this.onEat = null;             // F 키 콜백 (가장 포만감 높은 요리 먹기)
     this.onToggleMap = null;       // M 키 콜백 (전체 지도)
+    this.onChat = null;            // Enter 콜백 (채팅 입력창 열기, 35단계)
+    this.onToggleHelp = null;      // H 키 콜백 (조작법 도움말 접기/펼치기)
     this.onHotbarScroll = null;    // Shift+휠 또는 핫바 위에서 휠: 핫바 다음/이전 줄 (+1/-1)
 
     window.addEventListener('keydown', (e) => {
@@ -37,6 +40,8 @@ export class Input {
       if (e.code === 'KeyI' && this.onToggleInventory) this.onToggleInventory();
       if (e.code === 'KeyF' && this.onEat) this.onEat(); // 먹기 (31단계)
       if (e.code === 'KeyM' && this.onToggleMap) this.onToggleMap(); // 지도 (34단계)
+      if (e.code === 'Enter' && this.onChat) this.onChat(); // 채팅 (35단계). 입력창에 포커스가 있으면 isTyping 에서 걸러진다
+      if (e.code === 'KeyH' && this.onToggleHelp) this.onToggleHelp(); // 도움말 접기/펼치기
       if (e.code === 'KeyT' && this.onWheelKey) this.onWheelKey(true);
       if (this.onSelectWeapon) {
         if (/^Digit[1-9]$/.test(e.code)) this.onSelectWeapon(Number(e.code[5]) - 1);
@@ -81,8 +86,13 @@ export class Input {
     });
   }
 
+  // 포인터 잠금 상태로 취급할지: 실제 잠금이거나 터치 기기 (터치에는 잠금이 없으므로 항상 "잠긴 것처럼" 논다)
+  get locked() {
+    return this.pointerLocked || !!this.touch;
+  }
+
   requestPointerLock() {
-    if (!this.dom.requestPointerLock) return;
+    if (this.touch || !this.dom.requestPointerLock) return;
     const p = this.dom.requestPointerLock();
     if (p && p.catch) p.catch(() => {}); // 사용자 동작 없이 호출되면 거부되는데, 그때는 클릭으로 다시 잠근다
   }
@@ -111,12 +121,13 @@ export class Input {
     if (this.isDown('KeyS', 'ArrowDown')) z -= 1;
     if (this.isDown('KeyD', 'ArrowRight')) x += 1;
     if (this.isDown('KeyA', 'ArrowLeft')) x -= 1;
+    if (this.touch) { x += this.touch.axis.x; z += this.touch.axis.z; } // 조이스틱
     const len = Math.hypot(x, z);
     return len > 0 ? { x: x / len, z: z / len } : { x: 0, z: 0 };
   }
 
   get running() {
-    return this.isDown('ShiftLeft', 'ShiftRight');
+    return this.isDown('ShiftLeft', 'ShiftRight') || !!this.touch?.running;
   }
 
   // 프레임 끝에 호출해 누적값 초기화

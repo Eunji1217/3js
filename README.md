@@ -8,7 +8,7 @@
 
 - **1부 (1~9단계)**: 방·문·캐릭터·카메라를 만드는 three.js 기본 (약 1,300줄)
 - **2부 (10~20단계)**: 1부 개념을 조합해 무기·사격장·조준경·효과음·캐릭터 커스텀·칼 모션·연습 게임·사진 색 추출을 만드는 응용 (약 2,000줄)
-- **3부 (21~34단계)**: 공개 에셋(Kenney·Quaternius CC0 키트)으로 집을 꾸미고, 집 밖 세상(땅·울타리·숲)과 동물·사냥·채집, 재료·배합법·요리 도감, 진행 저장, 남/여 의상 조립 캐릭터, 스킨 쇼케이스 카메라, 낮과 밤, 체력·배고픔·수면, 동물의 반격, 광장의 상인과 탄약 경제, 미니맵을 만들고 GitHub Pages 에 배포하는 확장 (약 2,300줄)
+- **3부 (21~36단계)**: 공개 에셋(Kenney·Quaternius CC0 키트)으로 집을 꾸미고, 집 밖 세상(땅·울타리·숲)과 동물·사냥·채집, 재료·배합법·요리 도감, 진행 저장, 남/여 의상 조립 캐릭터, 스킨 쇼케이스 카메라, 낮과 밤, 체력·배고픔·수면, 동물의 반격, 광장의 상인과 탄약 경제, 미니맵, 웹소켓 멀티플레이(위치 동기화·채팅), 폰 터치 조작을 만들고 GitHub Pages 에 배포하는 확장 (약 2,500줄)
 
 각 단계는 다음 구성으로 되어 있습니다.
 
@@ -16,6 +16,96 @@
 - **코드**: 이 프로젝트에서 그 개념이 쓰인 곳
 - **실습**: 직접 바꿔 보면서 확인하는 과제
 - **확인**: 이해했는지 스스로 점검하는 질문
+
+---
+
+# 직접 받아서 실행하고 배포하기
+
+튜토리얼을 따라가기 전에, 또는 이 게임을 그냥 돌려 보고 싶은 사람을 위한 안내입니다. 코드는 서버 없이 **정적 파일**(HTML + JS + 모델)만으로 돌아가므로 어디든 올릴 수 있습니다.
+
+## 1. 준비물
+
+- **Node.js 20 LTS** 이상 (https://nodejs.org) — `node -v` 로 확인
+- **git** (https://git-scm.com)
+- 배포까지 하려면 **GitHub 계정**
+
+## 2. 받아서 실행하기
+
+```bash
+git clone https://github.com/Eunji1217/3js.git
+cd 3js
+npm install          # three.js 와 vite 를 받는다 (1분 안팎)
+npm run dev          # http://localhost:5173 이 열린다. 파일을 고치면 바로 반영
+```
+
+- 처음 열면 모델(약 40MB)을 내려받느라 몇 초 걸립니다. 이후에는 브라우저 캐시를 씁니다.
+- 진행 상황(위치·가방·돈·날짜)은 **브라우저의 localStorage**, 추가한 스킨 파일은 **IndexedDB** 에 저장됩니다. 다른 브라우저나 PC 에서는 처음부터 시작합니다.
+- 마우스 잠금(1인칭 시점 회전)은 `localhost` 와 `https` 에서 동작합니다. `http://192.168.x.x` 같은 주소로 다른 기기에서 열면 잠금이 안 될 수 있습니다.
+- **폰·태블릿**에서 열면 자동으로 터치 조작판(왼쪽 조이스틱 + 오른쪽 버튼)이 뜹니다. 가로로 돌려서 하는 걸 권합니다. PC 에서 터치판을 억지로 보려면 주소 뒤에 `?touch=1` 을 붙이세요 (`?touch=0` 은 반대).
+
+## 3. 빌드하기
+
+```bash
+npm run build        # dist/ 폴더에 배포용 파일이 만들어진다
+npm run preview      # dist/ 를 http://localhost:4173/3js/ 로 미리 본다
+```
+
+`vite.config.js` 의 **`base`** 가 중요합니다. 지금은 `https://<계정>.github.io/3js/` 처럼 **하위 경로**에 올리는 설정(`'/3js/'`)입니다. 도메인 루트(`https://example.com/`)에 올릴 거라면 `'/'` 로 바꿉니다. 모든 모델 주소는 `src/paths.js` 의 `asset()` 을 거치므로 `base` 만 바꾸면 됩니다 (28단계).
+
+## 4. 배포하기
+
+### A. GitHub Pages (무료, 추천 — 이 저장소가 쓰는 방법)
+
+1. GitHub 에서 이 저장소를 **Fork** 하거나, 내 저장소를 새로 만들어 코드를 push 합니다.
+2. 저장소 **Settings → Pages → Build and deployment → Source** 를 **GitHub Actions** 로 바꿉니다.
+3. 저장소 이름이 `3js` 가 아니면 `vite.config.js` 의 `base` 를 `'/<저장소 이름>/'` 으로 바꿔 커밋합니다.
+4. `main` 에 push 할 때마다 `.github/workflows/deploy.yml` 이 `npm run build` 를 돌려 `dist/` 를 올립니다. Actions 탭에서 초록 체크가 뜨면 `https://<계정>.github.io/<저장소 이름>/` 에서 열립니다 (1~2분).
+
+### B. Netlify · Vercel · Cloudflare Pages (무료)
+
+1. `vite.config.js` 의 `base` 를 `'/'` 로 바꿉니다 (도메인 루트에 올라가므로).
+2. 사이트에서 "Import from Git" 으로 저장소를 연결하고, **Build command** `npm run build`, **Output directory** `dist` 를 지정합니다. 이후 push 마다 자동 배포됩니다.
+3. Git 연동 없이도 됩니다: 로컬에서 `npm run build` 한 뒤 `dist/` 폴더를 사이트에 끌어다 놓으면 끝 (Netlify Drop).
+
+### C. 내 서버 · NAS · 학교 서버
+
+`npm run build` 로 만든 `dist/` 를 nginx, Apache, Caddy 같은 정적 서버의 문서 루트에 복사하면 됩니다. 급하면 `npx serve dist` 로 임시 서버를 띄울 수 있습니다. 하위 경로에 둘 때는 `base` 를 맞추세요.
+
+## 5. 라이선스
+
+- **모델·그림**: Kenney (Furniture Kit, Nature Kit, Cube Pets, Crosshair Pack, Fantasy Town Kit, Food Kit) 와 Quaternius (Universal Base Characters, Ultimate Modular Men/Women) 는 모두 **CC0** 입니다. 출처 표기 없이 상업 용도까지 자유롭고, 각 폴더의 `LICENSE.txt` 에 원문이 있습니다.
+- `public/models/Soldier.glb` 는 three.js 예제 모델(MIT) 입니다.
+- 코드는 학습용 예제이므로 자유롭게 가져다 쓰세요. 공개 배포할 때는 저장소에 `LICENSE` 파일(예: MIT)을 넣어 두면 받는 사람이 안심합니다.
+
+## 6. 멀티플레이(웹소켓) 켜기
+
+GitHub Pages 같은 정적 호스팅은 **파일만 내려 줄 뿐 연결을 유지하지 못하므로** 웹소켓 서버가 따로 필요합니다. 서버는 저장소의 `server/` 폴더에 있습니다 (Node + `ws`, 100줄). 1단계는 **위치 동기화 + 채팅**이고, 사격·동물·가방은 아직 각자 로컬입니다 (35단계).
+
+### 로컬에서 친구와 (같은 Wi-Fi)
+
+```bash
+cd server
+npm install
+npm start            # ws://localhost:8787
+```
+
+게임 HUD 의 **멀티플레이** 버튼 → 닉네임과 서버 주소(`ws://localhost:8787`, 다른 PC 는 `ws://<내 IP>:8787`) → 접속. 접속한 사람의 캐릭터가 보이고 **Enter** 로 채팅합니다. 브라우저에서 http://localhost:8787 을 열면 접속자 수가 보입니다.
+
+### 인터넷에 올리기 (Render 무료 티어)
+
+1. https://render.com 가입 → **New → Web Service** → 이 저장소 연결.
+2. **Root Directory** `server`, **Build Command** `npm install`, **Start Command** `npm start`, Instance Type **Free**.
+3. 만들어지면 `https://<이름>.onrender.com` 주소가 생깁니다. 게임에서는 **`wss://<이름>.onrender.com`** 으로 접속합니다 (https → wss).
+4. 접속 패널에 기본값으로 넣어 두려면 GitHub 저장소 **Settings → Secrets and variables → Actions → Variables** 에 `WS_URL` = `wss://<이름>.onrender.com` 을 만들고 다시 배포합니다 (`deploy.yml` 이 `VITE_WS_URL` 로 넣어 줍니다).
+5. 무료 티어는 15분 동안 접속이 없으면 잠들어서 첫 접속에 30초쯤 걸립니다. 접속 패널의 "다음에 자동 접속" 을 켜 두면 게임이 열리자마자 붙습니다.
+
+Fly.io, Railway 도 같은 방식(Node 서버, `PORT` 환경변수)으로 됩니다. Cloudflare Workers 는 Durable Objects 로 다시 써야 해서 이 서버 코드가 그대로 돌지는 않습니다.
+
+### 다음 단계 (아직 안 한 것)
+
+- 방 코드로 나누기 (서버의 `players` 를 방별 Map 으로)
+- 사격 명중·동물 체력·떨어진 재료·가게 재고를 서버가 결정하고 결과만 내려 주기 (권위 서버)
+- 남의 손에 든 무기 그리기, 피격 동기화
 
 ---
 
@@ -47,7 +137,9 @@ __game.world.doors[0].toggle() // 문 열기
 | `src/player.js` | 캐릭터 로드, 이동, 점프, 충돌, 애니메이션 | GLTFLoader, FBXLoader, AnimationMixer, SkeletonUtils |
 | `src/cameraRig.js` | 3인칭 추적 카메라와 1인칭 카메라 | 구면 좌표, Raycaster, lerp |
 | `src/input.js` | 키보드/마우스 이벤트 모음 | three.js 와 무관한 순수 DOM 코드 |
+| `src/touch.js` | 폰·태블릿 터치 조작판: 조이스틱, 시점 드래그, 버튼 (36단계) | Pointer Events, `(pointer: coarse)` |
 | `src/skins.js` | 스킨 목록 저장 (localStorage, IndexedDB) | three.js 와 무관 |
+| `src/net.js`, `src/remote.js`, `server/` | 멀티플레이: 웹소켓 클라이언트, 다른 플레이어 그리기, Node 서버 (35단계) | WebSocket, AnimationMixer |
 | `src/ui.js` | HUD, 토스트, 스킨/무기 패널, 조준선, 무기 휠 | three.js 와 무관 |
 | `src/range.js` (2부) | 사격장 방, 과녁, 넘어지는 표적, 무기 선반, 60초 연습 게임 | CanvasTexture, Group 회전축, worldToLocal, PointLight, emissive, 상태 기계·사인파 왕복 |
 | `src/weapons.js` (2부) | 무기 모델, 사격, 조준, 조준경, 칼 베기·찌르기 모션, 3인칭 팔 자세, 탄흔/예광 | Raycaster, Object3D 부모 바꾸기, userData, Quaternion, RenderTarget, Sprite, Line, 구간 함수 모션 |
@@ -399,6 +491,8 @@ three.js 에는 물리 엔진이 없습니다. 이 프로젝트는 가장 단순
 - 플레이어: 반지름 0.35 의 **원** (위에서 본 XZ 평면)
 
 원과 상자의 충돌 판정: 상자에서 원 중심과 가장 가까운 점을 찾고(`clamp`), 그 점까지 거리가 반지름보다 작으면 겹친 것. 겹쳤으면 그 방향으로 반지름만큼 밀어냅니다.
+
+**높이 (추가)**: 처음엔 XZ 만 보고 "점프 최고점에서만 낮은 상자를 통과" 시켰더니 울타리(1.2m)를 넘을 때 내려오다 다시 상자에 걸려 옆으로 튕겼습니다. 지금은 `groundAt` 이 **발 아래 가장 높은 상자 윗면**을 바닥 높이로 돌려주고, 윗면이 발보다 `STEP`(0.35m) 이내로 높은 상자는 옆에서 막지 않습니다. 그래서 낮은 턱은 걸어서 오르고, 울타리·책상은 점프해서 **위에 올라섰다가** 가장자리를 벗어나면 떨어집니다. 점프는 1.44m 로 울타리보다 조금 높습니다.
 
 ### 코드
 
@@ -1635,6 +1729,8 @@ export const asset = (path) => import.meta.env.BASE_URL + path.replace(/^\//, ''
 
 **좌표 변환 하나로 전부**: `toMap(x, z) = ((maxX - x)·S, (maxZ - z)·S)`. 위쪽이 +z(이 프로젝트의 "북쪽", 동물 들판), 오른쪽이 -x 입니다. 왜 -x 냐면 플레이어가 +z 를 볼 때 카메라 오른쪽 벡터가 `(cos yaw, 0, -sin yaw)` = -x 이기 때문입니다 (7단계). 지도 방향이 화면과 어긋나면 쓸 수 없으니 이 한 줄이 핵심입니다.
 
+**다른 플레이어도 점으로**: 35단계의 `remotes` Map 을 지도에 넘겨 주면(`worldMap.remotes`) 이름에서 뽑은 색(`playerColor`: 이름 문자열을 해시해 `hsl` 색상)으로 점을 찍고, 전체 지도에는 이름도 씁니다. 머리 위 이름표가 같은 색이라 지도와 화면을 바로 연결할 수 있습니다.
+
 **미니맵은 회전, 전체 지도는 고정**: 미니맵은 `translate → rotate → scale → translate(-플레이어)` 순서로 캔버스 변환을 쌓아 **보는 방향이 위**가 되게 합니다. 카메라 정면 `(-sin yaw, -cos yaw)` 는 지도 좌표로 `(sin yaw, cos yaw)` 이고, 이 벡터가 위(-y)를 가리키도록 `-π/2 - atan2(cos yaw, sin yaw)` 만큼 돌립니다. `clip()` 으로 원형. 전체 지도(M)는 북쪽 고정이고 플레이어 화살표가 `heading` 으로 돕니다. 변환 행렬을 쌓는 순서는 4단계 부모-자식 좌표계와 같은 이야기입니다.
 
 ### 실습
@@ -1648,6 +1744,70 @@ export const asset = (path) => import.meta.env.BASE_URL + path.replace(/^\//, ''
 
 - 정적 캔버스를 매 프레임 `drawImage` 하는 비용과, 3D 장면을 다시 그리는 비용을 비교해 보세요.
 - 미니맵 회전 각도 식에서 `atan2(cos yaw, sin yaw)` 의 인자 순서가 바뀌면 어떻게 될까요?
+
+---
+
+## 35단계. 멀티플레이 1단계: 웹소켓, 10Hz 상태 동기화, 보간, 채팅 (`server/index.js`, `src/net.js`, `src/remote.js`)
+
+### 개념
+
+**서버는 우체국**: `server/index.js` 는 접속한 사람마다 "마지막으로 받은 상태" 하나를 들고 있다가 100ms 마다 전부에게 한 메시지로 뿌립니다(`states`). 게임 규칙은 모릅니다. 입장(`join`)·퇴장(`leave`)·채팅(`chat`)·스킨 변경(`skin`)도 그냥 중계합니다. 메시지는 전부 JSON 한 줄이라 브라우저 개발자 도구의 Network → WS 탭에서 그대로 읽을 수 있습니다.
+
+**보내는 쪽은 10Hz, 그리는 쪽은 60fps**: `Net.update` 는 매 프레임 불리지만 0.1초마다, 그것도 **내용이 바뀌었을 때만** 보냅니다 (문자열 비교 한 줄). 받는 쪽 `RemotePlayer.update` 는 목표 위치로 `lerp`, 각도는 `atan2(sin, cos)` 로 감아서 짧은 쪽으로 돌립니다. 10Hz 데이터가 60fps 로 매끄럽게 보이는 이유입니다 (7단계 카메라 추적과 같은 `1 - exp(-dt·k)` 보간).
+
+**남의 캐릭터 = 내 조립 코드 재사용**: `RemotePlayer.setSkin` 은 플레이어의 `setCustom` 과 똑같이 `UMCharacter` / `QuaterniusCharacter` 를 만들고 Idle/Walk/Run 클립을 재생합니다. 서버는 스킨 중 **조립형(qchar) 파라미터만** 받아 줍니다. 파일·링크 스킨은 남의 컴퓨터에 없으니 기본 의상으로 보입니다. 이름표는 캔버스에 글자를 써서 `Sprite` 로 머리 위에 띄웁니다 (항상 카메라를 봄).
+
+**입력과 채팅의 충돌**: Enter 로 입력창을 열면 WASD 가 글자로 들어가야지 이동이 되면 안 됩니다. 16단계의 `isTyping` 이 "포커스가 input 이면 게임 키 무시" 를 이미 하고 있어서, 입력창에 `focus()` 만 주면 됩니다. Esc 로 닫고, 빈 채로 Enter 면 그냥 닫습니다.
+
+**재접속**: 서버가 잠들거나(Render 무료) 네트워크가 끊기면 1→2→4…15초 간격으로 다시 붙습니다(`retry` 지수 백오프). 다시 붙을 때는 `hello` 를 새로 보내므로 서버는 새 사람으로 봅니다. `sendSkin` 이 `hello.skin` 도 갱신해 두는 이유입니다.
+
+**믿지 않기**: 서버는 받은 값을 그대로 쓰지 않습니다. 이름 16자, 채팅 200자, 제어 문자 제거, 0.4초에 한 번, 좌표는 숫자 세 개인지 검사(`sanitizeSkin`, `clean`). 클라이언트는 누구나 고칠 수 있으니 서버가 마지막 방어선입니다.
+
+### 실습
+
+1. 서버 두 개를 다른 포트로 띄우고 접속 패널에서 바꿔 가며 "방" 처럼 써 보세요. 그다음 서버 코드에 `room` 을 추가해 한 서버에서 나누기.
+2. `TICK_MS` 를 500 으로 올리면 남의 캐릭터가 어떻게 보이나요? `RemotePlayer.update` 의 `k` 를 조절해 보세요.
+3. 남의 손에 든 무기 그리기: `states` 의 `w` 가 이미 오고 있습니다. 12단계 `buildWeaponModel` 을 오른손 뼈에 붙이면 됩니다.
+4. 사격 동기화 첫걸음: `{ t: 'shot', from, dir }` 을 중계하고, 받은 쪽에서 11단계 `Effects` 로 총구 화염만 그려 보세요.
+
+### 확인
+
+- 서버가 "마지막 상태 하나" 만 들고 있는데 메시지가 밀리면 어떻게 될까요? (중간 상태는 버려진다 — 위치에는 괜찮고, 사격 같은 사건에는 안 된다 → 사건은 따로 큐로)
+- `ws://` 와 `wss://` 의 차이는? Pages(https) 에서 `ws://` 로 접속하면 왜 막히나요? (혼합 콘텐츠)
+
+---
+
+## 36단계. 모바일: 터치 조작판과 성능 다이얼 (`src/touch.js`, `input.js` 의 `locked`)
+
+폰에는 키보드도, 마우스 잠금도 없습니다. 그런데 게임 코드는 전부 `input.keys` / `input.mouse` / `input.pointerLocked` 를 봅니다. 두 가지 길이 있습니다. (a) 게임 코드 곳곳에 "터치면 이렇게" 분기를 넣기, (b) **터치 조작판이 키보드·마우스인 척하기**. 이 프로젝트는 (b) 입니다. 조작판이 `input.keys.add('Space')`, `input.mouse.add(0)`, `input.mouseDX += dx` 를 직접 채워 넣으니 `player.js`·`weapons.js`·`cameraRig.js` 는 한 줄도 바뀌지 않았습니다.
+
+**기기 판별** (`IS_TOUCH`): `matchMedia('(pointer: coarse)')` 가 "주 입력 장치가 손가락처럼 굵다" 는 뜻입니다. 화면 폭이 아니라 입력 장치로 판단해야 터치 노트북·작은 창에서도 맞습니다. 주소에 `?touch=1` / `?touch=0` 을 붙이면 강제할 수 있어 PC 에서 개발·검증할 때 씁니다.
+
+**Pointer Events 로 손가락 여러 개 다루기**: `touchstart` 대신 `pointerdown` 을 씁니다. 손가락마다 `pointerId` 가 다르므로 "조이스틱을 잡은 손가락" 과 "시점을 돌리는 손가락" 을 따로 기억(`stickId`, `lookId`)하면 동시에 걷고 돌아볼 수 있습니다. `setPointerCapture` 로 손가락이 요소 밖으로 나가도 `pointermove` 가 계속 오게 하고, CSS `touch-action: none` 으로 브라우저의 스크롤·확대를 끕니다 (이걸 빼면 드래그가 페이지 스크롤이 됩니다).
+
+**조이스틱**: 처음 닿은 점이 중심, 반지름 `STICK_R` 까지 민 거리가 속도입니다. `axis = (dx, -dy) / STICK_R` 를 `moveAxis()` 에 더하면 WASD 와 같은 -1~1 벡터가 됩니다. 끝까지(92%) 밀면 `running = true`, 즉 Shift 를 누른 것과 같습니다.
+
+**시점 드래그**: 화면 전체를 덮는 투명한 층(`#tLook`)이 맨 아래(z-index 8)에 깔려 있고, 조이스틱·버튼·HUD 는 그 위에 있습니다. 빈 곳을 끌면 `mouseDX/DY` 에 더해 마우스 이동처럼 취급됩니다. `LOOK_SENS` 2.2 는 폰 화면이 작아 손가락 1px 를 마우스 2.2px 로 치는 값입니다.
+
+**"잠긴 것처럼"**: 사격·조준은 포인터 잠금 중에만 됩니다(16단계). 터치에는 잠금이 없으니 `input.locked` 를 두고 `pointerLocked || touch` 로 정의했습니다. `main.js` 의 `canFire`, `wantScope` 가 이걸 봅니다. `requestPointerLock()` 은 터치면 그냥 돌아갑니다.
+
+**버튼**: 누르고 있는 동안 키를 누른 것처럼(`keys.add` / `mouse.add`), 떼면 지웁니다. 공격은 `mouse 0`, 조준은 `mouse 2` 라서 자동 소총 연사·배율 더블탭도 그대로 됩니다. 인벤토리·지도·시점·채팅은 키보드 콜백(`onToggleInventory` 등)을 그대로 부릅니다. 패널이 열리면 조작판을 숨겨(`setHidden`) 패널 뒤에서 조이스틱이 눌리지 않게 하고, 쇼케이스(29단계)에서는 드래그 층만 남겨 캐릭터를 돌립니다.
+
+**성능 다이얼**: 폰 GPU 는 PC 의 1/10 쯤입니다. 세 군데만 낮췄습니다 — `setPixelRatio` 상한 2 → 1.5 (픽셀 수 44% 감소), 그림자 `PCFSoftShadowMap` → `PCFShadowMap`, 그림자 맵 2048 → 1024. 셋 다 "보기엔 거의 같은데 비용은 반" 인 항목들입니다. 더 필요하면 22단계 인스턴싱 개수(나무 110그루)를 줄이세요.
+
+**레이아웃 예산**: 폰 가로 모드는 주소창 때문에 세로가 300px 안팎입니다. 그래서 미니맵 90px, 무기 HUD 한 줄, 버튼 2줄로 압축했고 `body.touch` 아래 CSS 로만 바꿨습니다. PC 쪽 CSS 는 손대지 않았습니다.
+
+### 실습
+
+1. `LOOK_SENS` 와 `STICK_R` 을 바꿔 보세요. 감도 설정 UI 를 만들어 `localStorage` 에 저장하면 더 좋습니다.
+2. 조이스틱을 "닿은 자리에 생기는" 방식(화면 왼쪽 절반 아무 데나 누르면 거기가 중심)으로 바꿔 보세요. `#tLook` 에서 x < 50% 면 스틱으로 처리하면 됩니다.
+3. `navigator.getBattery()` 나 프레임 시간을 재서 30fps 아래로 떨어지면 그림자를 끄는 자동 다이얼을 만들어 보세요.
+4. 세로 모드 레이아웃: `@media (orientation: portrait)` 로 버튼을 아래 한 줄로 재배치해 보세요.
+
+### 확인
+
+- 왜 `touchstart` 가 아니라 `pointerdown` 인가요? (마우스·펜·손가락을 한 API 로, `pointerId` 로 손가락 구분)
+- 터치판이 `Input` 의 내부(`keys`, `mouse`)를 직접 만지는 건 캡슐화 위반 아닌가요? 어떤 대안이 있고 비용은 뭔가요? (`Input` 에 `press(code)` / `release(code)` 를 공개 메서드로 두면 더 깔끔. 지금은 코드 20줄을 아낀 대신 결합이 생김)
 
 ---
 
@@ -1674,7 +1834,8 @@ export const asset = (path) => import.meta.env.BASE_URL + path.replace(/^\//, ''
 16. **밤에는 동물이 잠들게**: 30단계의 `daynight.night` 를 보고 동물 상태 기계에 `sleep` 을 추가 (23단계 + 30단계)
 17. **울타리 밖 지형 높낮이**: 땅을 `PlaneGeometry` 분할 + 정점 y 노이즈로 언덕 만들기, 플레이어 y 를 땅 높이에 맞추기 (22단계 확장)
 18. **가죽·털 아이템과 옷 가게**: 드롭 표에 가죽을 더하고, 광장에 네 번째 노점을 세워 가죽으로 의상 부위를 사게 (23단계 + 33단계 + 26단계)
-19. **멀티플레이**: 작은 WebSocket 서버(예: Node + ws, 또는 Colyseus/PartyKit)로 위치·방향·애니메이션 상태를 초당 10~20번 주고받아 다른 플레이어를 같은 방에 그리기. 정적 Pages 만으로는 안 되고 서버를 어딘가에 띄워야 한다 (28단계 다음)
+19. **멀티플레이 2단계**: 35단계 위에 방 코드, 손에 든 무기 표시, 사격·동물·재료의 서버 권위 동기화 (서버가 결정하고 결과만 내려 주기)
+20. **모바일 2단계**: 36단계 위에 세로 모드 레이아웃, 패널(인벤토리·상점·지도)의 작은 화면 재배치, 홈 화면 설치(PWA: `manifest.json` + 서비스 워커)
 
 ---
 

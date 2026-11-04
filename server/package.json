@@ -1,0 +1,16 @@
+{
+  "name": "room-sim-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Room Sim 멀티플레이 서버 (웹소켓, 방 하나, 위치 동기화 + 채팅)",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

@@ -126,7 +126,7 @@ export class UI {
 
     // 조작법 도움말 접기 (상태는 localStorage 에 기억)
     const hud = this.$('hud');
-    const setCollapsed = (c) => { hud.classList.toggle('collapsed', c); this.$('hudToggle').textContent = c ? '도움말 펼치기' : '도움말 접기'; };
+    const setCollapsed = (c) => { hud.classList.toggle('collapsed', c); this.$('hudToggle').textContent = c ? '도움말 펼치기 (H)' : '도움말 접기 (H)'; };
     try { setCollapsed(localStorage.getItem('roomsim.hudCollapsed') === '1'); } catch {}
     this.$('hudToggle').addEventListener('click', () => {
       const c = !hud.classList.contains('collapsed');
@@ -280,6 +280,80 @@ export class UI {
   }
 
   // --- 체력·배고픔·돈·시각 HUD (31단계) ---
+  // --- 멀티플레이 (35단계): 접속 패널, 상태 표시, 채팅 ---
+  initNet() {
+    this.netPanel = this.$('netPanel');
+    this.onConnect = null;    // (name, url)
+    this.onDisconnect = null;
+    this.onChatSend = null;   // (text)
+    const saved = this.netSaved();
+    this.$('netName').value = saved.name;
+    this.$('netUrl').value = saved.url;
+    this.$('netAuto').checked = saved.auto;
+    this.$('netOpen').addEventListener('click', () => this.toggleNetPanel());
+    this.$('netClose').addEventListener('click', () => this.toggleNetPanel(false));
+    this.$('netConnect').addEventListener('click', () => {
+      const name = this.$('netName').value.trim() || '손님', url = this.$('netUrl').value.trim();
+      if (!/^wss?:\/\//.test(url)) { this.toast('서버 주소는 ws:// 또는 wss:// 로 시작해야 해요', 3000); return; }
+      try { localStorage.setItem('roomsim.net', JSON.stringify({ name, url, auto: this.$('netAuto').checked })); } catch {}
+      this.onConnect?.(name, url);
+      this.toggleNetPanel(false);
+    });
+    this.$('netDisconnect').addEventListener('click', () => { this.onDisconnect?.(); try { const s = this.netSaved(); localStorage.setItem('roomsim.net', JSON.stringify({ ...s, auto: false })); this.$('netAuto').checked = false; } catch {} });
+    const input = this.$('chatInput');
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { const text = input.value.trim(); if (text) this.onChatSend?.(text); this.closeChatInput(); }
+      else if (e.key === 'Escape') this.closeChatInput();
+      e.stopPropagation();
+    });
+    input.addEventListener('blur', () => this.closeChatInput()); // 폰에는 Esc 가 없으니 다른 곳을 누르면 닫힌다
+  }
+
+  netSaved() {
+    const d = { name: '', url: '', auto: false };
+    try { return { ...d, ...JSON.parse(localStorage.getItem('roomsim.net') || '{}') }; } catch { return d; }
+  }
+
+  get netPanelOpen() { return !this.netPanel.classList.contains('hidden'); }
+
+  toggleNetPanel(force) {
+    const open = force === undefined ? !this.netPanelOpen : force;
+    this.netPanel.classList.toggle('hidden', !open);
+    if (open) { this.panel.classList.add('hidden'); this.weaponPanel.classList.add('hidden'); this.charPanel.classList.add('hidden'); this.invPanel.classList.add('hidden'); this.shopPanel.classList.add('hidden'); this.$('mapPanel').classList.add('hidden'); }
+    this.onPanelsChanged?.();
+  }
+
+  setNetStatus(status, detail, count) {
+    const el = this.$('netStatus');
+    const text = status === 'online' ? `접속 중 · ${count}명 · Enter 채팅` : status === 'connecting' ? (detail || '접속하는 중...') : (detail || '오프라인 · HUD 의 "멀티플레이" 로 접속');
+    if (el.textContent !== text) el.textContent = text;
+    el.classList.toggle('online', status === 'online');
+  }
+
+  addChat({ name, text, system = false, me = false }) {
+    const log = this.$('chatLog');
+    const d = document.createElement('div');
+    if (system) { d.className = 'system'; d.textContent = text; }
+    else { d.className = me ? 'me' : ''; const b = document.createElement('b'); b.textContent = name + ': '; d.append(b, document.createTextNode(text)); }
+    log.appendChild(d);
+    while (log.children.length > 8) log.firstChild.remove();
+    setTimeout(() => d.classList.add('old'), 12000);
+    setTimeout(() => d.remove(), 40000);
+  }
+
+  get chatOpen() { return !this.$('chatInput').classList.contains('hidden'); }
+  openChatInput() {
+    const input = this.$('chatInput');
+    input.classList.remove('hidden');
+    input.value = '';
+    input.focus();
+  }
+  closeChatInput() {
+    const input = this.$('chatInput');
+    input.classList.add('hidden');
+    input.blur();
+  }
+
   setVitals(v, timeText) {
     const c = this._vitals;
     const hp = Math.round(v.health), food = Math.round(v.hunger);
@@ -424,7 +498,7 @@ export class UI {
   }
 
   get anyPanelOpen() {
-    return this.panelOpen || this.weaponPanelOpen || this.charPanelOpen || this.gamePanelOpen || this.invPanelOpen || this.shopPanelOpen || this.mapPanelOpen;
+    return this.panelOpen || this.weaponPanelOpen || this.charPanelOpen || this.gamePanelOpen || this.invPanelOpen || this.shopPanelOpen || this.mapPanelOpen || this.netPanelOpen;
   }
 
   togglePanel(force) {

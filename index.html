@@ -2,7 +2,7 @@
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <link rel="icon" href="data:," />
     <title>Room Sim</title>
     <style>
@@ -129,6 +129,23 @@
       #scope::before { width: 70vmin; height: 1px; }
       #scope::after { width: 1px; height: 70vmin; }
 
+      /* 멀티플레이 (35단계): 왼쪽 위 채팅 로그 + 입력창, 접속 패널 */
+      #chat { position: fixed; left: 12px; top: 58px; width: 360px; z-index: 11; pointer-events: none; user-select: none; }
+      #netStatus { display: inline-block; font-size: 12px; color: #fff; background: rgba(0, 0, 0, 0.55); padding: 3px 10px; border-radius: 8px; margin-bottom: 4px; }
+      #netStatus.online { background: rgba(30, 120, 60, 0.75); }
+      #chatLog div { font-size: 13px; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; margin: 2px 0; line-height: 1.35; word-break: break-word; transition: opacity 1s; }
+      #chatLog div.old { opacity: 0.35; }
+      #chatLog div.system { color: #ffd34d; }
+      #chatLog div b { color: #9fd1ff; }
+      #chatLog div.me b { color: #c6f59a; }
+      #chatInput { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; padding: 6px 10px; border: 1px solid #2b7cff; border-radius: 8px; background: rgba(0, 0, 0, 0.7); color: #fff; font: inherit; pointer-events: auto; }
+      #chatInput.hidden { display: none; }
+      body.showcase #chat { display: none; }
+      #netPanel .row { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+      #netPanel label { flex: 0 0 64px; font-size: 13px; color: #444; }
+      #netPanel input { flex: 1; min-width: 0; box-sizing: border-box; padding: 6px 8px; border: 1px solid #bbb; border-radius: 6px; font: inherit; }
+      #netPanel .help { margin-top: 10px; font-size: 12px; color: #666; line-height: 1.45; }
+      #netPanel .help code { background: #eee; padding: 0 4px; border-radius: 3px; }
       #weaponHud {
         position: fixed; right: 12px; bottom: 12px; z-index: 16; min-width: 120px;
         background: rgba(0, 0, 0, 0.65); color: #fff; padding: 10px 16px; border-radius: 8px;
@@ -261,6 +278,44 @@
         position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
         font-size: 16px; color: #444; background: #fff; z-index: 40;
       }
+
+      /* 터치 조작 (36단계): 폰·태블릿에서만 보인다 (body.touch). 왼쪽 조이스틱, 오른쪽 버튼, 빈 화면 드래그 = 시점 */
+      html, body { overscroll-behavior: none; }
+      body.touch canvas, #touch, #touch * { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+      #tLook { position: fixed; inset: 0; z-index: 8; }
+      #tStick { position: fixed; left: 24px; bottom: 24px; width: 120px; height: 120px; z-index: 9; border-radius: 50%; background: rgba(0, 0, 0, 0.28); border: 2px solid rgba(255, 255, 255, 0.45); }
+      #tKnob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; background: rgba(255, 255, 255, 0.75); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); }
+      /* 오른쪽 아래 동작 묶음: 1줄 점프·조준·공격(크게), 2줄 E·R·무기 넘기기 */
+      /* 세로 300px(폰 가로 모드, 주소창 포함) 안에 다 들어가게 압축해 둔다 */
+      #tButtons { position: fixed; right: 12px; bottom: 12px; z-index: 9; display: grid; grid-template-columns: 52px 52px 64px; grid-auto-rows: 64px; gap: 4px 8px; align-items: center; justify-items: center; }
+      #tButtons button, #tTop button { border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.5); background: rgba(0, 0, 0, 0.42); color: #fff; font: 700 20px/1 system-ui, sans-serif; padding: 0; position: relative; }
+      #tButtons button { width: 52px; height: 52px; }
+      #tButtons button::after { content: attr(data-title); position: absolute; left: 50%; bottom: -3px; transform: translateX(-50%); font: 600 9px/1 system-ui, sans-serif; color: rgba(255, 255, 255, 0.85); white-space: nowrap; }
+      #tButtons button.on, #tTop button.on { background: rgba(43, 124, 255, 0.75); border-color: #fff; }
+      #tFire { width: 64px !important; height: 64px !important; font-size: 28px !important; }
+      /* 오른쪽 위 메뉴 줄 (미니맵 왼쪽): 인벤토리·지도·시점·채팅·메뉴 */
+      #tTop { position: fixed; right: 110px; top: 8px; z-index: 9; display: flex; gap: 8px; }
+      #tTop button { width: 40px; height: 40px; font-size: 16px; }
+      #tTop button::after { content: attr(data-title); position: absolute; left: 50%; top: 100%; margin-top: 2px; transform: translateX(-50%); font: 600 9px/1 system-ui, sans-serif; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; white-space: nowrap; }
+      body.showcase #tStick, body.showcase #tButtons, body.showcase #tTop { display: none; } /* 쇼케이스에서는 드래그 층만 남겨 캐릭터를 돌린다 */
+      body.touch #hud { display: none; left: 8px; top: 8px; bottom: auto; max-width: min(70vw, 420px); max-height: 80vh; overflow-y: auto; }
+      body.touch.menu #hud { display: block; }
+      body.touch #hud > div:not(#mode):not(#room):not(.touchHelp) { display: none; } /* 키보드 도움말 대신 터치 설명 한 줄 */
+      body.touch #hud .touchHelp { display: block; }
+      body.touch #hud #hudToggle { display: none; }
+      .touchHelp { display: none; }
+      body.touch #chat { top: 8px; width: min(45vw, 360px); }
+      body.touch.menu #chat { display: none; } /* 메뉴가 열리면 그 자리의 채팅은 잠깐 숨긴다 */
+      body.touch #minimap { width: 90px; height: 90px; top: 8px; right: 8px; }
+      body.touch #weaponHud { bottom: 150px; right: 12px; min-width: 0; padding: 4px 12px; display: flex; gap: 8px; align-items: baseline; } /* 동작 버튼 바로 위, 한 줄로 */
+      body.touch #weaponHud.hidden { display: none; }
+      body.touch #wAmmo { font-size: 18px; }
+      body.touch #wStatus { display: none; }
+      body.touch #toast { top: 56px; }
+      body.touch #vitals { bottom: 58px; }
+      body.touch #vitals .bar { width: 110px; }
+      body.touch #hotbar .slot { width: 32px; height: 32px; }
+      body.touch #wheelHint { display: none; }
     </style>
   </head>
   <body>
@@ -271,6 +326,11 @@
     <div id="hurt"></div>
     <div id="fade"></div>
     <canvas id="minimap" width="190" height="190"></canvas>
+    <div id="chat">
+      <div id="netStatus">오프라인 · HUD 의 "멀티플레이" 로 접속</div>
+      <div id="chatLog"></div>
+      <input id="chatInput" class="hidden" maxlength="200" placeholder="메시지 입력 후 Enter · Esc 취소" autocomplete="off" />
+    </div>
     <div id="vitals">
       <div class="bar" id="hpBar"><i id="hpFill"></i><span id="hpText">❤ 100</span></div>
       <div class="bar" id="foodBar"><i id="foodFill"></i><span id="foodText">🍗 100</span></div>
@@ -290,6 +350,7 @@
     </div>
 
     <div id="hud">
+      <div class="touchHelp"><b>터치</b> 왼쪽 스틱 이동 (끝까지 밀면 달리기) · 빈 화면 드래그 시점 · ◎ 공격 · ⌖ 조준(누르고 있기) · E 상호작용 · ☰ 이 메뉴</div>
       <div><b>W A S D</b> 이동 (화살표도 가능)</div>
       <div><b>Shift</b> 달리기 · <b>Space</b> 점프</div>
       <div><b>마우스</b> 시점 회전 (클릭해 잠금 · ESC 해제) · <b>- / =</b> 카메라 거리</div>
@@ -299,7 +360,7 @@
       <div><b>F</b> 먹기 (가장 포만감 높은 요리) · 인벤토리·핫바의 요리 칸을 클릭해도 먹어요</div>
       <div><b>생존</b> 배고픔은 시간이 지나면 줄고 0 이면 체력이 닳아요. 침대 앞에서 <b>E</b> 잠자기 → 아침 + 체력 회복. 큰 동물은 맞으면 반격해요</div>
       <div><b>광장</b> 마당 동쪽 울타리 문 → 돌길 끝. 노점 앞에서 <b>E</b> 로 고기·요리 팔고 탄약·재료 사기</div>
-      <div><b>M</b> 전체 지도 · 오른쪽 위 미니맵에 동물(빨강)·재료(노랑)·상인(파랑)이 점으로 보여요</div>
+      <div><b>M</b> 전체 지도 · 오른쪽 위 미니맵에 동물(빨강)·재료(노랑)·상인(파랑)·다른 플레이어(이름 색)가 점으로 보여요 · <b>H</b> 이 도움말 접기/펼치기</div>
       <div><b>T (누르기)</b> 무기 휠 · <b>1 ~ 5</b> 바로 선택 · <b>X</b> 넣기</div>
       <div><b>휠 스크롤</b> 무기 넘기기 (맨손에서도)</div>
       <div><b>좌클릭</b> 사격 / 칼 베기 / 주먹 · <b>우클릭</b> 조준 / 칼 찌르기 · <b>R</b> 재장전</div>
@@ -313,8 +374,9 @@
       <button id="weaponOpen">무기 선택</button>
       <button id="gameStart">연습 게임 시작 (G)</button>
       <button id="invOpen">인벤토리 (I)</button>
-      <button id="hudToggle" title="조작법 도움말 접기 / 펼치기 (핫바와 겹치면 접으세요)">도움말 접기</button>
+      <button id="hudToggle" title="조작법 도움말 접기 / 펼치기 (H 키로도 됩니다)">도움말 접기 (H)</button>
       <button id="saveReset" title="localStorage 에 2초마다 자동 저장됩니다">진행 초기화</button>
+      <button id="netOpen" title="웹소켓 서버에 접속해 다른 사람과 같은 방에서 놀기">멀티플레이</button>
     </div>
 
     <div id="weaponHud" class="hidden">
@@ -342,6 +404,22 @@
       <div id="invBody"></div>
     </div>
 
+    <div id="netPanel" class="panel hidden">
+      <h3>멀티플레이 <button id="netClose" title="닫기">×</button></h3>
+      <div class="row"><label>닉네임</label><input id="netName" maxlength="16" placeholder="이름 (16자)" /></div>
+      <div class="row"><label>서버</label><input id="netUrl" placeholder="ws://localhost:8787 또는 wss://…onrender.com" /></div>
+      <div class="row" style="justify-content: flex-end;">
+        <label style="flex: 1;"><input id="netAuto" type="checkbox" style="width: auto; margin-right: 6px;" />다음에 자동 접속</label>
+        <button id="netDisconnect" class="secondary">끊기</button>
+        <button id="netConnect" class="primary">접속</button>
+      </div>
+      <div class="help">
+        같은 서버에 접속한 사람들의 캐릭터가 보이고 <b>Enter</b> 로 채팅할 수 있어요. 사격·동물·가방은 아직 각자 따로예요 (1단계).<br />
+        서버 띄우기: 저장소의 <code>server/</code> 폴더에서 <code>npm install</code> 후 <code>npm start</code> (ws://localhost:8787).
+        인터넷에 올리려면 README 의 "멀티플레이" 항목을 보세요 (Render 무료).
+      </div>
+    </div>
+
     <div id="mapPanel" class="panel hidden">
       <h3>지도 (M) <button id="mapClose" title="닫기">×</button></h3>
       <canvas id="mapBig" width="640" height="640"></canvas>
@@ -353,6 +431,7 @@
         <span><i style="background:#5ee36b"></i>호박·버섯</span>
         <span><i style="background:#3b7bff"></i>상인</span>
         <span><i style="background:#ff9a3c"></i>문</span>
+        <span><i style="background:conic-gradient(#ff6b6b,#ffd34d,#6bd37a,#6bb8ff,#c98bff,#ff6b6b);border:1px solid #fff"></i>다른 플레이어 (이름 색)</span>
         <span>위쪽이 북쪽(동물 들판). 미니맵은 보는 방향이 위</span>
       </div>
     </div>

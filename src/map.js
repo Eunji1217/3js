@@ -22,6 +22,7 @@ export class WorldMap {
     this.staticCanvas.width = (GROUND.maxX - GROUND.minX) * S;
     this.staticCanvas.height = (GROUND.maxZ - GROUND.minZ) * S;
     this.staticDone = false;
+    this.remotes = null; // 멀티플레이의 다른 플레이어 Map (main 이 넣어 준다). 이름 색으로 점을 찍는다
   }
 
   // 월드 → 정적 캔버스 픽셀
@@ -89,6 +90,13 @@ export class WorldMap {
     for (const it of w.animals.items) dot(it.group.position.x, it.group.position.z, '#ffe34d', 3.5);
     for (const a of w.animals.animals) if (!a.dead) dot(a.obj.position.x, a.obj.position.z, a.state === 'attack' ? '#ff8a1f' : '#ff3b3b', a.species.scale > 0.5 ? 4.5 : 3.5);
     for (const v of w.town.vendors) dot(v.center.x, v.center.z, '#3b7bff', 4);
+    // 다른 플레이어: 이름 색 점 + 흰 테두리, 전체 지도에서는 이름도
+    if (this.remotes) for (const r of this.remotes.values()) {
+      const [px, py] = this.toMap(r.group.position.x, r.group.position.z);
+      ctx.fillStyle = r.color; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5 / scale;
+      ctx.beginPath(); ctx.arc(px, py, 5 / scale, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      if (!this.miniPass) { ctx.font = `bold ${12 / scale}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.lineWidth = 3 / scale; ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.strokeText(r.name, px, py - 7 / scale); ctx.fillStyle = r.color; ctx.fillText(r.name, px, py - 7 / scale); }
+    }
     // 플레이어 화살표. 정면 (sin h, cos h) → 지도에서는 (-sin h, -cos h)
     const p = this.player;
     const [px, py] = this.toMap(p.x, p.z);
@@ -118,7 +126,9 @@ export class WorldMap {
     const [px, py] = this.toMap(this.player.x, this.player.z);
     mc.translate(-px, -py);
     mc.drawImage(this.staticCanvas, 0, 0);
+    this.miniPass = true;
     this.drawMarkers(mc, scale, heading);
+    this.miniPass = false;
     mc.restore();
     // 테두리와 북쪽 표시
     mc.strokeStyle = 'rgba(255,255,255,0.8)'; mc.lineWidth = 3; mc.beginPath(); mc.arc(R, R, R - 2, 0, Math.PI * 2); mc.stroke();

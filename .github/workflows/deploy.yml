@@ -26,6 +26,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+        env:
+          VITE_WS_URL: ${{ vars.WS_URL }} # 저장소 Settings → Variables 에 WS_URL (예: wss://xxx.onrender.com) 을 두면 접속 패널에 기본값으로 들어간다
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

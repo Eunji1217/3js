@@ -3,6 +3,7 @@ import Stats from 'three/addons/libs/stats.module.js';
 import { createWorld } from './world.js';
 import { Player } from './player.js';
 import { Input } from './input.js';
+import { TouchControls, IS_TOUCH } from './touch.js';
 import { CameraRig } from './cameraRig.js';
 import { SkinStore, DEFAULT_SKINS } from './skins.js';
 import { UI } from './ui.js';
@@ -11,6 +12,8 @@ import { loadSave, clearSave, createAutoSave } from './save.js';
 import { Inventory, ITEMS, consume } from './items.js';
 import { DayNight } from './daynight.js';
 import { WorldMap } from './map.js';
+import { Net } from './net.js';
+import { RemotePlayer } from './remote.js';
 import { Vitals } from './vitals.js';
 import { priceOf, VENDOR_DIST } from './town.js';
 import { playHitThud } from './audio.js';
@@ -34,10 +37,10 @@ const SKY = { indoor: { color: new THREE.Color(0xffffff), fog: 0.04 }, outdoor: 
 
 // --- 렌더러 ---
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, IS_TOUCH ? 1.5 : 2)); // 폰은 픽셀이 빽빽해서 1.5 배면 충분하고 GPU 부담이 절반 가까이 준다
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = IS_TOUCH ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap; // 부드러운 그림자는 폰에서 비싸다
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 document.body.appendChild(renderer.domElement);
 
@@ -51,6 +54,7 @@ scene.add(camera); // 1인칭 무기 모델을 카메라에 붙여 렌더링하�
 
 const world = createWorld();
 scene.add(world.group);
+if (IS_TOUCH) world.lights.sun.shadow.mapSize.set(1024, 1024); // 그림자 해상도 절반 (36단계 모바일)
 
 const player = new Player();
 scene.add(player.group);
@@ -141,7 +145,8 @@ function syncPointerLock() {
   else input.exitPointerLock();
 }
 function refreshModeText() {
-  if (rig.mode === 'first') ui.setMode('모드: 1인칭 (ESC로 마우스 해제, 클릭으로 다시 잠금)');
+  if (IS_TOUCH) ui.setMode(rig.mode === 'first' ? '모드: 1인칭' : '모드: 3인칭');
+  else if (rig.mode === 'first') ui.setMode('모드: 1인칭 (ESC로 마우스 해제, 클릭으로 다시 잠금)');
   else ui.setMode('모드: 3인칭 (ESC로 마우스 해제, 클릭으로 다시 잠금)');
 }
 ui.onPanelsChanged = () => { syncPointerLock(); syncShowcase(); }; // 패널이 열리면 마우스를 풀고, 다 닫히면 다시 잠근다
@@ -205,9 +210,29 @@ ui.onCook = (recipe) => {
 input.onToggleInventory = () => { ui.toggleInvPanel(); syncPointerLock(); };
 input.onHotbarScroll = (dir) => ui.hotbarScroll(dir);
 input.onEat = () => { if (!seq) eatBest(); };
+// 멀티플레이 1단계 (35단계): 위치 동기화 + 채팅. 서버 주소는 빌드 환경변수 VITE_WS_URL → 접속 패널 입력 순
+const net = new Net();
+const remotes = new Map(); // id → RemotePlayer
+const DEFAULT_WS = import.meta.env.VITE_WS_URL || (location.hostname === 'localhost' ? 'ws://localhost:8787' : '');
+const skinForNet = () => (player.skin?.format === 'qchar' && player.skin.params ? { format: 'qchar', params: player.skin.params } : null);
+ui.initNet();
+if (!ui.$('netUrl').value && DEFAULT_WS) ui.$('netUrl').value = DEFAULT_WS;
+net.onStatus = (s, detail) => ui.setNetStatus(s, detail, net.count);
+net.onJoin = (p) => { const existed = remotes.has(p.id); remotes.get(p.id)?.dispose(); remotes.set(p.id, new RemotePlayer(scene, p)); if (!existed) ui.addChat({ system: true, text: `${p.name} 님이 들어왔어요` }); ui.setNetStatus(net.status, '', net.count); };
+net.onLeave = (id) => { const r = remotes.get(id); if (r) { ui.addChat({ system: true, text: `${r.name} 님이 나갔어요` }); r.dispose(); remotes.delete(id); } ui.setNetStatus(net.status, '', net.count); };
+net.onState = (id, s) => remotes.get(id)?.setState(s);
+net.onSkin = (id, skin) => remotes.get(id)?.setSkin(skin);
+net.onChat = (m) => ui.addChat({ name: m.name, text: m.text, me: m.id === net.id });
+ui.onConnect = (name, url) => net.connect(url, { name, skin: skinForNet() });
+ui.onDisconnect = () => net.disconnect();
+ui.onChatSend = (text) => net.sendChat(text);
+input.onChat = () => { if (net.online && !ui.anyPanelOpen && !seq && !ui.chatOpen) ui.openChatInput(); };
+
 // 지도 (34단계): 미니맵은 항상, 전체 지도는 M
 const worldMap = new WorldMap(world, document.getElementById('minimap'), document.getElementById('mapBig'));
+worldMap.remotes = remotes; // 다른 플레이어도 지도에 (이름 색 점)
 input.onToggleMap = () => { ui.toggleMap(); syncPointerLock(); };
+input.onToggleHelp = () => ui.$('hudToggle').click(); // H: 조작법 도움말 접기/펼치기 (버튼과 같은 동작)
 document.getElementById('mapClose').addEventListener('click', () => { ui.toggleMap(false); syncPointerLock(); });
 Promise.all([world.outdoor.ready, world.town.ready]).then(() => worldMap.drawStatic()); // 나무 위치는 배치가 끝나야 안다
 world.animals.onHit = () => ui.flashHit('명중');
@@ -249,7 +274,7 @@ document.getElementById('saveReset').addEventListener('click', () => {
 });
 ui.onGameDismiss = () => world.range.dismissGame();
 input.onSelectWeapon = (i) => selectWeapon(i === null ? null : WEAPONS[i]?.id ?? null);
-player.onModelChanged = () => weapons.attachToPlayer();
+player.onModelChanged = () => { weapons.attachToPlayer(); net.sendSkin(skinForNet()); }; // 스킨이 바뀌면 남들에게도
 input.onWheelKey = (down) => {
   if (down) {
     if (!ui.wheelOpen && !ui.anyPanelOpen) ui.openWheel(WEAPONS, weapons.current?.id ?? null, weapons.ammo);
@@ -262,6 +287,18 @@ input.onMove = (dx, dy) => ui.moveWheel(dx, dy);
 // 좌상단 FPS 표시
 const stats = new Stats();
 document.body.appendChild(stats.dom);
+if (IS_TOUCH) stats.dom.style.display = 'none';
+
+// 터치 조작판 (36단계): 폰·태블릿이면 조이스틱·버튼을 띄운다. 버튼은 키보드 단축키와 같은 콜백을 부른다
+const touch = IS_TOUCH ? new TouchControls(input, {
+  onCycleWeapon: () => { if (!ui.anyPanelOpen && !seq) selectWeapon(weapons.cycle(1)); },
+  onInventory: () => input.onToggleInventory(),
+  onMap: () => input.onToggleMap(),
+  onView: () => input.onToggleView(),
+  onChat: () => { if (net.online) input.onChat(); else { ui.toggleNetPanel(); syncPointerLock(); } },
+  onMenu: () => { document.body.classList.toggle('menu'); },
+}) : null;
+if (touch) input.touch = touch;
 
 function setMode(mode) {
   rig.setMode(mode);
@@ -297,7 +334,7 @@ function frame() {
   const dt = Math.min(clock.getDelta(), 0.05); // 탭 전환 등으로 튀는 값 방지
   // 조준경은 1인칭에서만 그려지므로, 3인칭에서 배율 총(소총·저격총)으로 우클릭 조준하면 그동안만 1인칭 스코프 시점으로 들어간다 (PUBG 식).
   // 3인칭 pitch(+ = 위에서 내려다봄)와 1인칭 pitch(+ = 위를 봄)는 부호가 반대라 전환할 때 뒤집는다
-  const wantScope = !!weapons.current?.zoom && input.mouseDown(2) && !ui.anyPanelOpen && !ui.wheelOpen && input.pointerLocked && !seq && !rig.showcase;
+  const wantScope = !!weapons.current?.zoom && input.mouseDown(2) && !ui.anyPanelOpen && !ui.wheelOpen && input.locked && !seq && !rig.showcase;
   if (wantScope && rig.mode === 'third') { tempScope = true; rig.pitch = -rig.pitch; setMode('first'); }
   else if (!wantScope && tempScope) { tempScope = false; if (rig.mode === 'first') { rig.pitch = -rig.pitch; setMode('third'); } }
   const first = rig.mode === 'first';
@@ -356,7 +393,7 @@ function frame() {
   if (input.pressed('KeyG') && !ui.wheelOpen) toggleGame();
 
   // 무기: 패널/휠이 닫혀 있고 마우스가 잠겨 있을 때만 사격 (잠금 전 클릭은 잠그기용)
-  const canFire = !ui.anyPanelOpen && !ui.wheelOpen && input.pointerLocked && !seq;
+  const canFire = !ui.anyPanelOpen && !ui.wheelOpen && input.locked && !seq; // locked: 포인터 잠금 또는 터치 기기
   weapons.update(dt, input, first, canFire);
 
   if (rig.showcase && input.pressed('Mouse0')) rig.stopAutoSpin(); // 화면을 누르면 자동 회전 멈춤 (캔버스 mousedown 만 잡히므로 패널 클릭은 무관)
@@ -391,6 +428,10 @@ function frame() {
   hurtEl.style.opacity = vitals.hurtT > 0 ? Math.min(1, vitals.hurtT / 0.4) * 0.7 : vitals.health < 25 ? 0.25 + 0.15 * Math.sin(performance.now() / 150) : 0;
   ui.setVitals(vitals, daynight.timeText());
   worldMap.update(player, rig.yaw, ui.mapPanelOpen);
+  touch?.setHidden((ui.anyPanelOpen && !rig.showcase) || !!seq);
+  // 멀티플레이: 내 상태 보내기(10Hz), 남들 보간
+  net.update(dt, { p: [+player.position.x.toFixed(2), +player.position.y.toFixed(2), +player.position.z.toFixed(2)], h: +player.heading.toFixed(3), a: player.animState || 'idle', w: weapons.current?.id ?? null });
+  for (const r of remotes.values()) r.update(dt);
   autoSave.update(dt);
   ui.setGame(world.range.game);
 
@@ -426,6 +467,8 @@ async function start() {
   ui.hideLoading();
   setMode('third');
   if (restore(loadSave())) ui.toast('이전 진행 상황을 불러왔어요 (HUD 의 "진행 초기화"로 처음부터)', 3000);
+  const saved = ui.netSaved();
+  if (saved.auto && saved.url) net.connect(saved.url, { name: saved.name || '손님', skin: skinForNet() }); // "다음에 자동 접속"
   renderer.setAnimationLoop(frame); // 모니터 주사율에 맞춰 실행 (보통 60fps)
 }
 
@@ -435,4 +478,4 @@ start().catch((err) => {
 });
 
 // 디버그/테스트용
-window.__game = { renderer, scene, camera, player, world, rig, skins, ui, input, weapons, setMode, THREE, inv, snapshot, restore, autoSave, vitals, daynight, eat, startSleep };
+window.__game = { renderer, scene, camera, player, world, rig, skins, ui, input, weapons, setMode, THREE, inv, snapshot, restore, autoSave, vitals, daynight, eat, startSleep, net, remotes, skinForNet };
