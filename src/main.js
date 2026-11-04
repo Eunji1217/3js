@@ -229,7 +229,7 @@ let myTag = null;
 function setMyName(name) {
   if (myTag) { player.group.remove(myTag); myTag.material.map?.dispose(); myTag.material.dispose(); }
   myTag = makeNameTag(name, playerColor(name));
-  myTag.position.y = 2.05;
+  myTag.position.y = 1.92;
   player.group.add(myTag);
 }
 ui.onDisconnect = () => net.disconnect();

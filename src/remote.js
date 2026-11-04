@@ -28,7 +28,7 @@ export class RemotePlayer {
     this.cur = null;
     this.version = 0;
     this.tag = makeNameTag(info.name, this.color);
-    this.tag.position.y = 2.05;
+    this.tag.position.y = 1.92;
     this.group.add(this.tag);
     scene.add(this.group);
     if (info.state) this.setState(info.state, true);
@@ -112,7 +112,7 @@ export function makeNameTag(name, color = '#fff') {
   ctx.fillText(String(name).slice(0, 16), 128, 33);
   const tex = new THREE.CanvasTexture(c);
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-  sprite.scale.set(1.2, 0.3, 1);
+  sprite.scale.set(0.6, 0.15, 1); // 머리 위에 작게 (글자 높이 약 8cm)
   sprite.renderOrder = 10;
   return sprite;
 }

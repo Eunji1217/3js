@@ -324,6 +324,7 @@ export class UI {
       const n = name.value.trim() || '손님';
       try { localStorage.setItem('roomsim.net', JSON.stringify({ ...this.netSaved(), name: n })); } catch {}
       this.$('netName').value = n;
+      name.blur(); // Enter 로 시작하면 입력칸에 포커스가 남아 모든 키가 '타이핑' 으로 걸러져 E·WASD 가 안 먹던 문제
       el.classList.add('hidden');
       this.onStart?.(n, multi);
       this.onPanelsChanged?.();
