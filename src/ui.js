@@ -126,8 +126,10 @@ export class UI {
 
     // 조작법 도움말 접기 (상태는 localStorage 에 기억)
     const hud = this.$('hud');
-    const setCollapsed = (c) => { hud.classList.toggle('collapsed', c); this.$('hudToggle').textContent = c ? '도움말 펼치기 (H)' : '도움말 접기 (H)'; };
-    try { setCollapsed(localStorage.getItem('roomsim.hudCollapsed') === '1'); } catch {}
+    const setCollapsed = (c) => { hud.classList.toggle('collapsed', c); this.$('hudToggle').textContent = c ? '도움말 보기 (H)' : '도움말 접기 (H)'; };
+    let collapsed = true; // 처음에는 접혀 있고(단축키는 시작 화면에 있다), 펼쳤던 사람은 기억
+    try { collapsed = localStorage.getItem('roomsim.hudCollapsed') !== '0'; } catch {}
+    setCollapsed(collapsed);
     this.$('hudToggle').addEventListener('click', () => {
       const c = !hud.classList.contains('collapsed');
       setCollapsed(c);
@@ -289,17 +291,16 @@ export class UI {
     const saved = this.netSaved();
     this.$('netName').value = saved.name;
     this.$('netUrl').value = saved.url;
-    this.$('netAuto').checked = saved.auto;
     this.$('netOpen').addEventListener('click', () => this.toggleNetPanel());
     this.$('netClose').addEventListener('click', () => this.toggleNetPanel(false));
     this.$('netConnect').addEventListener('click', () => {
       const name = this.$('netName').value.trim() || '손님', url = this.$('netUrl').value.trim();
       if (!/^wss?:\/\//.test(url)) { this.toast('서버 주소는 ws:// 또는 wss:// 로 시작해야 해요', 3000); return; }
-      try { localStorage.setItem('roomsim.net', JSON.stringify({ name, url, auto: this.$('netAuto').checked })); } catch {}
+      try { localStorage.setItem('roomsim.net', JSON.stringify({ name, url })); } catch {}
       this.onConnect?.(name, url);
       this.toggleNetPanel(false);
     });
-    this.$('netDisconnect').addEventListener('click', () => { this.onDisconnect?.(); try { const s = this.netSaved(); localStorage.setItem('roomsim.net', JSON.stringify({ ...s, auto: false })); this.$('netAuto').checked = false; } catch {} });
+    this.$('netDisconnect').addEventListener('click', () => this.onDisconnect?.());
     const input = this.$('chatInput');
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { const text = input.value.trim(); if (text) this.onChatSend?.(text); this.closeChatInput(); }
@@ -310,9 +311,29 @@ export class UI {
   }
 
   netSaved() {
-    const d = { name: '', url: '', auto: false };
+    const d = { name: '', url: '' };
     try { return { ...d, ...JSON.parse(localStorage.getItem('roomsim.net') || '{}') }; } catch { return d; }
   }
+
+  // 시작 화면: 이름을 받고 혼자/같이 를 고른다. 닫히면 onStart(name, multi)
+  openStart() {
+    const el = this.$('start'), name = this.$('startName');
+    name.value = this.netSaved().name;
+    el.classList.remove('hidden');
+    const go = (multi) => {
+      const n = name.value.trim() || '손님';
+      try { localStorage.setItem('roomsim.net', JSON.stringify({ ...this.netSaved(), name: n })); } catch {}
+      this.$('netName').value = n;
+      el.classList.add('hidden');
+      this.onStart?.(n, multi);
+      this.onPanelsChanged?.();
+    };
+    this.$('startSingle').onclick = () => go(false);
+    this.$('startMulti').onclick = () => go(true);
+    name.onkeydown = (e) => { if (e.key === 'Enter') go(false); e.stopPropagation(); };
+    if (!window.matchMedia('(pointer: coarse)').matches) name.focus(); // 폰에서는 키보드가 화면을 덮으니 자동 포커스하지 않는다
+  }
+  get startOpen() { return !this.$('start').classList.contains('hidden'); }
 
   get netPanelOpen() { return !this.netPanel.classList.contains('hidden'); }
 
@@ -498,7 +519,7 @@ export class UI {
   }
 
   get anyPanelOpen() {
-    return this.panelOpen || this.weaponPanelOpen || this.charPanelOpen || this.gamePanelOpen || this.invPanelOpen || this.shopPanelOpen || this.mapPanelOpen || this.netPanelOpen;
+    return this.panelOpen || this.weaponPanelOpen || this.charPanelOpen || this.gamePanelOpen || this.invPanelOpen || this.shopPanelOpen || this.mapPanelOpen || this.netPanelOpen || this.startOpen;
   }
 
   togglePanel(force) {

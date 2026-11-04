@@ -274,6 +274,22 @@
       #gameResult .big small { font-size: 16px; margin-left: 2px; color: #444; }
       #gamePanel .foot { justify-content: center; }
 
+      /* 시작 화면: 뒤는 흐리게, 가운데 카드 */
+      #start { position: fixed; inset: 0; z-index: 35; display: flex; align-items: center; justify-content: center; background: rgba(20, 24, 32, 0.35); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+      #start .card { width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 24px); overflow-y: auto; box-sizing: border-box; background: rgba(255, 255, 255, 0.96); border-radius: 14px; padding: 22px 24px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3); }
+      #start h2 { margin: 0 0 14px; font-size: 22px; }
+      #start label { display: block; font-size: 13px; color: #555; }
+      #start input { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; padding: 10px 12px; font: 16px system-ui, sans-serif; border: 1px solid #bbb; border-radius: 8px; }
+      #start .btns { display: flex; gap: 8px; margin-top: 14px; }
+      #start .btns button { flex: 1; padding: 12px 0; border: 1px solid #2b7cff; border-radius: 8px; background: #fff; color: #2b7cff; font: 600 15px system-ui, sans-serif; cursor: pointer; }
+      #start .btns button.primary { background: #2b7cff; color: #fff; }
+      #start .hint { margin-top: 12px; font-size: 12px; color: #777; line-height: 1.45; }
+      #start .keys { margin-top: 12px; padding-top: 10px; border-top: 1px solid #e3e3e3; display: grid; grid-template-columns: 1fr 1fr; gap: 3px 14px; font-size: 12px; color: #444; }
+      #start .keys b { display: inline-block; min-width: 64px; color: #111; }
+      #start .keys.touchKeys { display: none; }
+      body.touch #start .keys { display: none; }
+      body.touch #start .keys.touchKeys { display: block; }
+      body.touch #start .keys.touchKeys b { min-width: 0; margin-right: 4px; }
       #loading {
         position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
         font-size: 16px; color: #444; background: #fff; z-index: 40;
@@ -320,6 +336,31 @@
   </head>
   <body>
     <div id="loading">모델 불러오는 중...</div>
+    <!-- 시작 화면 (35단계): 이름을 받고 혼자/같이 를 고른다. 이름은 localStorage(roomsim.net) 에 저장되어 다음부터 채워진다 -->
+    <div id="start" class="hidden">
+      <div class="card">
+        <h2>Room Sim</h2>
+        <label>이름<input id="startName" maxlength="16" placeholder="머리 위에 뜰 이름 (16자)" autocomplete="off" /></label>
+        <div class="btns">
+          <button id="startSingle" class="primary">혼자 하기</button>
+          <button id="startMulti">같이 하기 (멀티)</button>
+        </div>
+        <div class="hint">같이 하기는 웹소켓 서버가 필요해요. 서버 주소는 HUD 의 "멀티플레이" 패널에서 바꿀 수 있어요.</div>
+        <div class="keys">
+          <div><b>W A S D</b>이동</div><div><b>Shift</b>달리기</div>
+          <div><b>Space</b>점프</div><div><b>마우스</b>시점 (클릭 잠금 · ESC 해제)</div>
+          <div><b>V</b>1인칭 / 3인칭</div><div><b>E</b>문 · 줍기 · 요리 · 상점 · 잠자기</div>
+          <div><b>I</b>인벤토리</div><div><b>F</b>먹기</div>
+          <div><b>M</b>지도</div><div><b>H</b>도움말 (왼쪽 아래)</div>
+          <div><b>좌클릭</b>사격 · 베기 · 주먹</div><div><b>우클릭</b>조준 · 스코프 · 찌르기</div>
+          <div><b>R</b>재장전</div><div><b>휠</b>무기 넘기기</div>
+          <div><b>T 누르기</b>무기 휠</div><div><b>1~5 · X</b>무기 선택 · 넣기</div>
+          <div><b>G</b>연습 게임 (사격장)</div><div><b>Enter</b>채팅 (멀티)</div>
+          <div><b>- / =</b>카메라 거리</div><div><b>Shift+휠</b>핫바 줄 바꾸기</div>
+        </div>
+        <div class="keys touchKeys"><b>터치</b> 왼쪽 스틱 이동 (끝까지 밀면 달리기) · 빈 화면 드래그 시점 · ◎ 공격 · ⌖ 조준 · E 상호작용 · ☰ 메뉴</div>
+      </div>
+    </div>
     <div id="toast" class="hidden"></div>
     <div id="prompt" class="hidden"></div>
     <div id="focus" class="hidden"></div>
@@ -409,7 +450,6 @@
       <div class="row"><label>닉네임</label><input id="netName" maxlength="16" placeholder="이름 (16자)" /></div>
       <div class="row"><label>서버</label><input id="netUrl" placeholder="ws://localhost:8787 또는 wss://…onrender.com" /></div>
       <div class="row" style="justify-content: flex-end;">
-        <label style="flex: 1;"><input id="netAuto" type="checkbox" style="width: auto; margin-right: 6px;" />다음에 자동 접속</label>
         <button id="netDisconnect" class="secondary">끊기</button>
         <button id="netConnect" class="primary">접속</button>
       </div>

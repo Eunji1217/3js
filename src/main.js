@@ -13,7 +13,7 @@ import { Inventory, ITEMS, consume } from './items.js';
 import { DayNight } from './daynight.js';
 import { WorldMap } from './map.js';
 import { Net } from './net.js';
-import { RemotePlayer } from './remote.js';
+import { RemotePlayer, makeNameTag, playerColor } from './remote.js';
 import { Vitals } from './vitals.js';
 import { priceOf, VENDOR_DIST } from './town.js';
 import { playHitThud } from './audio.js';
@@ -223,7 +223,15 @@ net.onLeave = (id) => { const r = remotes.get(id); if (r) { ui.addChat({ system:
 net.onState = (id, s) => remotes.get(id)?.setState(s);
 net.onSkin = (id, skin) => remotes.get(id)?.setSkin(skin);
 net.onChat = (m) => ui.addChat({ name: m.name, text: m.text, me: m.id === net.id });
-ui.onConnect = (name, url) => net.connect(url, { name, skin: skinForNet() });
+ui.onConnect = (name, url) => { setMyName(name); net.connect(url, { name, skin: skinForNet() }); };
+// 내 이름표: 시작 화면에서 받은 이름을 내 머리 위에도 (3인칭에서만 보인다). 색 규칙은 남들 이름표와 같다
+let myTag = null;
+function setMyName(name) {
+  if (myTag) { player.group.remove(myTag); myTag.material.map?.dispose(); myTag.material.dispose(); }
+  myTag = makeNameTag(name, playerColor(name));
+  myTag.position.y = 2.05;
+  player.group.add(myTag);
+}
 ui.onDisconnect = () => net.disconnect();
 ui.onChatSend = (text) => net.sendChat(text);
 input.onChat = () => { if (net.online && !ui.anyPanelOpen && !seq && !ui.chatOpen) ui.openChatInput(); };
@@ -398,7 +406,8 @@ function frame() {
 
   if (rig.showcase && input.pressed('Mouse0')) rig.stopAutoSpin(); // 화면을 누르면 자동 회전 멈춤 (캔버스 mousedown 만 잡히므로 패널 클릭은 무관)
   // 쇼케이스 중에는 이동·점프를 받지 않는다 (카메라를 돌리는 드래그가 이동으로 새지 않게)
-  player.update(dt, rig.showcase || seq ? NO_INPUT : input, rig.yaw, world, !rig.showcase && (first || weapons.aiming || weapons.swinging));
+  if (myTag) myTag.visible = !first && !rig.showcase;
+  player.update(dt, rig.showcase || seq || ui.startOpen ? NO_INPUT : input, rig.yaw, world, !rig.showcase && (first || weapons.aiming || weapons.swinging));
   weapons.poseArms(dt, first); // 3인칭 조준 자세 / 칼 휘두르기 (애니메이션 위에 덮어쓰기)
   const mouse = input.consume();
   if (ui.wheelOpen) { mouse.dx = 0; mouse.dy = 0; } // 휠을 고르는 동안은 시점을 돌리지 않는다
@@ -467,8 +476,16 @@ async function start() {
   ui.hideLoading();
   setMode('third');
   if (restore(loadSave())) ui.toast('이전 진행 상황을 불러왔어요 (HUD 의 "진행 초기화"로 처음부터)', 3000);
-  const saved = ui.netSaved();
-  if (saved.auto && saved.url) net.connect(saved.url, { name: saved.name || '손님', skin: skinForNet() }); // "다음에 자동 접속"
+  // 시작 화면: 이름을 받고 혼자/같이 를 고른다. "같이" 는 서버 주소(빌드 변수 또는 패널 입력)가 있어야 한다
+  ui.onStart = (name, multi) => {
+    setMyName(name);
+    if (multi) {
+      const url = ui.$('netUrl').value.trim();
+      if (/^wss?:\/\//.test(url)) net.connect(url, { name, skin: skinForNet() });
+      else { ui.toast('서버 주소가 없어요. 멀티플레이 패널에 ws:// 주소를 넣고 접속하세요', 4000); ui.toggleNetPanel(true); }
+    }
+  };
+  ui.openStart();
   renderer.setAnimationLoop(frame); // 모니터 주사율에 맞춰 실행 (보통 60fps)
 }
 
@@ -478,4 +495,4 @@ start().catch((err) => {
 });
 
 // 디버그/테스트용
-window.__game = { renderer, scene, camera, player, world, rig, skins, ui, input, weapons, setMode, THREE, inv, snapshot, restore, autoSave, vitals, daynight, eat, startSleep, net, remotes, skinForNet };
+window.__game = { renderer, scene, camera, player, world, rig, skins, ui, input, weapons, setMode, THREE, inv, snapshot, restore, autoSave, vitals, daynight, eat, startSleep, net, remotes, skinForNet, setMyName, get myTag() { return myTag; } };

@@ -100,7 +100,7 @@ export class RemotePlayer {
 }
 
 // 머리 위 이름표: 캔버스에 글자를 써서 항상 카메라를 보는 Sprite 로
-function makeNameTag(name, color = '#fff') {
+export function makeNameTag(name, color = '#fff') {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 64;
   const ctx = c.getContext('2d');
