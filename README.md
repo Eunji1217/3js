@@ -95,7 +95,7 @@ npm start            # ws://localhost:8787
 ### 인터넷에 올리기 (Render 무료 티어)
 
 1. https://render.com 가입 → **New → Web Service** → 이 저장소 연결.
-2. **Root Directory** `server`, **Build Command** `npm install`, **Start Command** `npm start`, Instance Type **Free**.
+2. **Root Directory** `server`, **Build Command** `npm install`, **Start Command** `npm start`, Instance Type **Free**. (Root Directory 를 비워 둬도 됩니다. 루트 `package.json` 의 `start` 가 서버를 대신 켜 줍니다.)
 3. 만들어지면 `https://<이름>.onrender.com` 주소가 생깁니다. 게임에서는 **`wss://<이름>.onrender.com`** 으로 접속합니다 (https → wss).
 4. 접속 패널에 기본값으로 넣어 두려면 GitHub 저장소 **Settings → Secrets and variables → Actions → Variables** 에 `WS_URL` = `wss://<이름>.onrender.com` 을 만들고 다시 배포합니다 (`deploy.yml` 이 `VITE_WS_URL` 로 넣어 줍니다).
 5. 무료 티어는 15분 동안 접속이 없으면 잠들어서 첫 접속에 30초쯤 걸립니다. 시작 화면에서 "같이 하기" 를 누르면 이 주소로 바로 붙습니다 (주소가 없으면 멀티플레이 패널이 열립니다).
