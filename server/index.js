@@ -48,13 +48,21 @@ wss.on('connection', (ws) => {
     try { m = JSON.parse(data); } catch { return; }
     if (!m || typeof m !== 'object') return;
     switch (m.t) {
-      case 'hello':
-        me.name = clean(m.name, 16) || me.name;
+      case 'hello': {
+        const name = clean(m.name, 16) || me.name;
+        // 닉네임 중복 거절: 같은 이름(대소문자 무시)이 이미 있으면 알려 주고 끊는다. 클라이언트는 시작 화면으로 돌아간다
+        if ([...players.values()].some((p) => p !== me && p.ready && p.name.toLowerCase() === name.toLowerCase())) {
+          send(ws, { t: 'nameTaken', name });
+          ws.close(4001, 'name taken');
+          break;
+        }
+        me.name = name;
         me.skin = sanitizeSkin(m.skin);
         me.ready = true;
         send(ws, { t: 'welcome', id, name: me.name, players: [...players.values()].filter((p) => p !== me && p.ready).map(pub) });
         broadcast({ t: 'join', ...pub(me) }, ws);
         break;
+      }
       case 'state':
         if (Array.isArray(m.p) && m.p.length === 3 && m.p.every(Number.isFinite)) {
           me.state = { p: m.p.map((v) => Math.round(v * 100) / 100), h: Number.isFinite(m.h) ? m.h : 0, a: ANIMS.has(m.a) ? m.a : 'idle', w: typeof m.w === 'string' ? m.w.slice(0, 12) : null };

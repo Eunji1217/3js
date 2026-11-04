@@ -22,6 +22,7 @@ export class Net {
     this.onState = null;  // (id, { p, h, a, w })
     this.onChat = null;   // ({ id, name, text, ts })
     this.onSkin = null;   // (id, skin)
+    this.onNameTaken = null; // (name) 서버가 중복 닉네임이라 거절
   }
 
   get online() { return this.status === 'online'; }
@@ -104,6 +105,11 @@ export class Net {
         if (p) { p.skin = m.skin; this.onSkin?.(m.id, m.skin); }
         break;
       }
+      case 'nameTaken':
+        this.wantOpen = false; // 서버가 끊어도 재접속하지 않는다
+        this.setStatus('offline', '이미 쓰는 이름이에요');
+        this.onNameTaken?.(m.name);
+        break;
       case 'full':
         this.wantOpen = false;
         this.setStatus('offline', '방이 가득 찼어요');

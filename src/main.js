@@ -216,6 +216,7 @@ const remotes = new Map(); // id → RemotePlayer
 const DEFAULT_WS = import.meta.env.VITE_WS_URL || (location.hostname === 'localhost' ? 'ws://localhost:8787' : '');
 const skinForNet = () => (player.skin?.format === 'qchar' && player.skin.params ? { format: 'qchar', params: player.skin.params } : null);
 ui.initNet();
+ui.initPause();
 if (!ui.$('netUrl').value && DEFAULT_WS) ui.$('netUrl').value = DEFAULT_WS;
 net.onStatus = (s, detail) => ui.setNetStatus(s, detail, net.count);
 net.onJoin = (p) => { const existed = remotes.has(p.id); remotes.get(p.id)?.dispose(); remotes.set(p.id, new RemotePlayer(scene, p)); if (!existed) ui.addChat({ system: true, text: `${p.name} 님이 들어왔어요` }); ui.setNetStatus(net.status, '', net.count); };
@@ -223,6 +224,7 @@ net.onLeave = (id) => { const r = remotes.get(id); if (r) { ui.addChat({ system:
 net.onState = (id, s) => remotes.get(id)?.setState(s);
 net.onSkin = (id, skin) => remotes.get(id)?.setSkin(skin);
 net.onChat = (m) => ui.addChat({ name: m.name, text: m.text, me: m.id === net.id });
+net.onNameTaken = (n) => { ui.toast(`"${n}" 은 이미 누가 쓰고 있어요. 다른 이름을 적어 주세요`, 4000); ui.toggleNetPanel(false); ui.openStart(); };
 ui.onConnect = (name, url) => { setMyName(name); net.connect(url, { name, skin: skinForNet() }); };
 // 내 이름표: 시작 화면에서 받은 이름을 내 머리 위에도 (3인칭에서만 보인다). 색 규칙은 남들 이름표와 같다
 let myTag = null;
@@ -235,6 +237,20 @@ function setMyName(name) {
 ui.onDisconnect = () => net.disconnect();
 ui.onChatSend = (text) => net.sendChat(text);
 input.onChat = () => { if (net.online && !ui.anyPanelOpen && !seq && !ui.chatOpen) ui.openChatInput(); };
+// 일시 정지 (ESC). 포인터가 잠긴 동안의 ESC 는 브라우저가 잠금 해제에 쓰고 키 이벤트를 주지 않으므로,
+// "우리가 풀지 않았는데 잠금이 풀렸다" 는 pointerlockchange 를 ESC 로 친다. 잠기지 않은 상태의 ESC 는 키 이벤트로 온다
+document.addEventListener('pointerlockchange', () => {
+  if (!input.pointerLocked && wantsLock() && !ui.startOpen && !seq) ui.togglePause(true);
+});
+input.onEscape = () => {
+  if (ui.pauseOpen) ui.togglePause(false);
+  else if (!ui.anyPanelOpen && !seq) ui.togglePause(true);
+};
+ui.onLeave = () => {
+  net.disconnect();
+  ui.closeChatInput();
+  ui.openStart();
+};
 
 // 지도 (34단계): 미니맵은 항상, 전체 지도는 M
 const worldMap = new WorldMap(world, document.getElementById('minimap'), document.getElementById('mapBig'));
@@ -407,7 +423,7 @@ function frame() {
   if (rig.showcase && input.pressed('Mouse0')) rig.stopAutoSpin(); // 화면을 누르면 자동 회전 멈춤 (캔버스 mousedown 만 잡히므로 패널 클릭은 무관)
   // 쇼케이스 중에는 이동·점프를 받지 않는다 (카메라를 돌리는 드래그가 이동으로 새지 않게)
   if (myTag) myTag.visible = !first && !rig.showcase;
-  player.update(dt, rig.showcase || seq || ui.startOpen ? NO_INPUT : input, rig.yaw, world, !rig.showcase && (first || weapons.aiming || weapons.swinging));
+  player.update(dt, rig.showcase || seq || ui.startOpen || ui.pauseOpen ? NO_INPUT : input, rig.yaw, world, !rig.showcase && (first || weapons.aiming || weapons.swinging));
   weapons.poseArms(dt, first); // 3인칭 조준 자세 / 칼 휘두르기 (애니메이션 위에 덮어쓰기)
   const mouse = input.consume();
   if (ui.wheelOpen) { mouse.dx = 0; mouse.dy = 0; } // 휠을 고르는 동안은 시점을 돌리지 않는다

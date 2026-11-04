@@ -275,15 +275,16 @@
       #gamePanel .foot { justify-content: center; }
 
       /* 시작 화면: 뒤는 흐리게, 가운데 카드 */
-      #start { position: fixed; inset: 0; z-index: 35; display: flex; align-items: center; justify-content: center; background: rgba(20, 24, 32, 0.35); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
-      #start .card { width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 24px); overflow-y: auto; box-sizing: border-box; background: rgba(255, 255, 255, 0.96); border-radius: 14px; padding: 22px 24px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3); }
-      #start h2 { margin: 0 0 14px; font-size: 22px; }
+      #pause { z-index: 34; }
+      #start, #pause { position: fixed; inset: 0; z-index: 35; display: flex; align-items: center; justify-content: center; background: rgba(20, 24, 32, 0.35); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+      #pause .card, #start .card { width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 24px); overflow-y: auto; box-sizing: border-box; background: rgba(255, 255, 255, 0.96); border-radius: 14px; padding: 22px 24px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3); }
+      #pause h2, #start h2 { margin: 0 0 14px; font-size: 22px; }
       #start label { display: block; font-size: 13px; color: #555; }
       #start input { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; padding: 10px 12px; font: 16px system-ui, sans-serif; border: 1px solid #bbb; border-radius: 8px; }
-      #start .btns { display: flex; gap: 8px; margin-top: 14px; }
-      #start .btns button { flex: 1; padding: 12px 0; border: 1px solid #2b7cff; border-radius: 8px; background: #fff; color: #2b7cff; font: 600 15px system-ui, sans-serif; cursor: pointer; }
-      #start .btns button.primary { background: #2b7cff; color: #fff; }
-      #start .hint { margin-top: 12px; font-size: 12px; color: #777; line-height: 1.45; }
+      #pause .btns, #start .btns { display: flex; gap: 8px; margin-top: 14px; }
+      #pause .btns button, #start .btns button { flex: 1; padding: 12px 0; border: 1px solid #2b7cff; border-radius: 8px; background: #fff; color: #2b7cff; font: 600 15px system-ui, sans-serif; cursor: pointer; }
+      #pause .btns button.primary, #start .btns button.primary { background: #2b7cff; color: #fff; }
+      #pause .hint, #start .hint { margin-top: 12px; font-size: 12px; color: #777; line-height: 1.45; }
       #start .keys { margin-top: 12px; padding-top: 10px; border-top: 1px solid #e3e3e3; display: grid; grid-template-columns: 1fr 1fr; gap: 3px 14px; font-size: 12px; color: #444; }
       #start .keys b { display: inline-block; min-width: 64px; color: #111; }
       #start .keys.touchKeys { display: none; }
@@ -337,6 +338,17 @@
   <body>
     <div id="loading">모델 불러오는 중...</div>
     <!-- 시작 화면 (35단계): 이름을 받고 혼자/같이 를 고른다. 이름은 localStorage(roomsim.net) 에 저장되어 다음부터 채워진다 -->
+    <!-- 일시 정지 (ESC): 계속하기 / 나가기 -->
+    <div id="pause" class="hidden">
+      <div class="card">
+        <h2>일시 정지</h2>
+        <div class="btns">
+          <button id="pauseResume" class="primary">계속하기 (ESC)</button>
+          <button id="pauseLeave">나가기</button>
+        </div>
+        <div class="hint">나가기를 누르면 접속을 끊고 시작 화면으로 돌아가요. 진행 상황은 그대로 저장돼 있어요.</div>
+      </div>
+    </div>
     <div id="start" class="hidden">
       <div class="card">
         <h2>Room Sim</h2>
@@ -352,6 +364,7 @@
           <div><b>V</b>1인칭 / 3인칭</div><div><b>E</b>문 · 줍기 · 요리 · 상점 · 잠자기</div>
           <div><b>I</b>인벤토리</div><div><b>F</b>먹기</div>
           <div><b>M</b>지도</div><div><b>H</b>도움말 (왼쪽 아래)</div>
+          <div><b>ESC</b>일시 정지 · 나가기</div><div><b>Tab</b>스킨 선택</div>
           <div><b>좌클릭</b>사격 · 베기 · 주먹</div><div><b>우클릭</b>조준 · 스코프 · 찌르기</div>
           <div><b>R</b>재장전</div><div><b>휠</b>무기 넘기기</div>
           <div><b>T 누르기</b>무기 휠</div><div><b>1~5 · X</b>무기 선택 · 넣기</div>
@@ -418,6 +431,7 @@
       <button id="hudToggle" title="조작법 도움말 접기 / 펼치기 (H 키로도 됩니다)">도움말 접기 (H)</button>
       <button id="saveReset" title="localStorage 에 2초마다 자동 저장됩니다">진행 초기화</button>
       <button id="netOpen" title="웹소켓 서버에 접속해 다른 사람과 같은 방에서 놀기">멀티플레이</button>
+      <button id="pauseOpen" title="일시 정지 · 접속 끊고 시작 화면으로">나가기 (ESC)</button>
     </div>
 
     <div id="weaponHud" class="hidden">

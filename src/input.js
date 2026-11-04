@@ -26,6 +26,7 @@ export class Input {
     this.onToggleMap = null;       // M 키 콜백 (전체 지도)
     this.onChat = null;            // Enter 콜백 (채팅 입력창 열기, 35단계)
     this.onToggleHelp = null;      // H 키 콜백 (조작법 도움말 접기/펼치기)
+    this.onEscape = null;          // ESC 콜백 (일시 정지 메뉴). 포인터가 잠겨 있을 때의 ESC 는 브라우저가 먹고 pointerlockchange 만 온다
     this.onHotbarScroll = null;    // Shift+휠 또는 핫바 위에서 휠: 핫바 다음/이전 줄 (+1/-1)
 
     window.addEventListener('keydown', (e) => {
@@ -42,6 +43,7 @@ export class Input {
       if (e.code === 'KeyM' && this.onToggleMap) this.onToggleMap(); // 지도 (34단계)
       if (e.code === 'Enter' && this.onChat) this.onChat(); // 채팅 (35단계). 입력창에 포커스가 있으면 isTyping 에서 걸러진다
       if (e.code === 'KeyH' && this.onToggleHelp) this.onToggleHelp(); // 도움말 접기/펼치기
+      if (e.code === 'Escape' && this.onEscape) this.onEscape();
       if (e.code === 'KeyT' && this.onWheelKey) this.onWheelKey(true);
       if (this.onSelectWeapon) {
         if (/^Digit[1-9]$/.test(e.code)) this.onSelectWeapon(Number(e.code[5]) - 1);

@@ -336,6 +336,21 @@ export class UI {
   }
   get startOpen() { return !this.$('start').classList.contains('hidden'); }
 
+  // 일시 정지 (ESC): 계속하기 / 나가기. 나가기는 onLeave 로 알린다
+  initPause() {
+    this.onLeave = null;
+    this.$('pauseResume').addEventListener('click', () => this.togglePause(false));
+    this.$('pauseLeave').addEventListener('click', () => { this.togglePause(false); this.onLeave?.(); });
+    this.$('pauseOpen').addEventListener('click', () => this.togglePause(true));
+  }
+  get pauseOpen() { return !this.$('pause').classList.contains('hidden'); }
+  togglePause(force) {
+    const open = force === undefined ? !this.pauseOpen : force;
+    if (open === this.pauseOpen) return;
+    this.$('pause').classList.toggle('hidden', !open);
+    this.onPanelsChanged?.();
+  }
+
   get netPanelOpen() { return !this.netPanel.classList.contains('hidden'); }
 
   toggleNetPanel(force) {
@@ -520,7 +535,7 @@ export class UI {
   }
 
   get anyPanelOpen() {
-    return this.panelOpen || this.weaponPanelOpen || this.charPanelOpen || this.gamePanelOpen || this.invPanelOpen || this.shopPanelOpen || this.mapPanelOpen || this.netPanelOpen || this.startOpen;
+    return this.panelOpen || this.weaponPanelOpen || this.charPanelOpen || this.gamePanelOpen || this.invPanelOpen || this.shopPanelOpen || this.mapPanelOpen || this.netPanelOpen || this.startOpen || this.pauseOpen;
   }
 
   togglePanel(force) {
