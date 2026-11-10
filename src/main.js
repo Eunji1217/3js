@@ -17,6 +17,37 @@ import { RemotePlayer, makeNameTag, playerColor } from './remote.js';
 import { Vitals } from './vitals.js';
 import { priceOf, VENDOR_DIST } from './town.js';
 import { playHitThud } from './audio.js';
+import { HUB, goLobby } from './hub.js';
+
+// 오류를 화면에서 볼 수 있게 (폰에는 개발자 도구가 없다): 처음 3개는 토스트로, ?debug=1 이면 왼쪽 아래 로그 패널에 전부
+const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
+{
+  const toastEl = document.getElementById('toast');
+  let shown = 0, toastT = 0;
+  let panel = null;
+  if (DEBUG) {
+    panel = document.createElement('pre');
+    panel.id = 'debugLog';
+    panel.style.cssText = 'position:fixed;left:8px;bottom:8px;max-width:60vw;max-height:40vh;overflow:auto;z-index:60;margin:0;padding:6px 8px;font:11px/1.35 monospace;color:#ffb;background:rgba(0,0,0,0.75);border-radius:6px;pointer-events:none;white-space:pre-wrap;';
+    document.body.appendChild(panel);
+    for (const level of ['error', 'warn']) {
+      const orig = console[level].bind(console);
+      console[level] = (...args) => { orig(...args); log(level.toUpperCase() + ': ' + args.map((a) => (a && a.stack) || (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ').slice(0, 300)); };
+    }
+  }
+  const log = (text) => { if (!panel) return; panel.textContent += text + '\n'; panel.scrollTop = panel.scrollHeight; };
+  const report = (text) => {
+    log('ERR: ' + text);
+    if (shown++ >= 3) return;
+    toastEl.textContent = '⚠️ 오류: ' + text.slice(0, 160);
+    toastEl.classList.remove('hidden');
+    clearTimeout(toastT);
+    toastT = setTimeout(() => toastEl.classList.add('hidden'), 7000);
+  };
+  window.addEventListener('error', (e) => report(`${e.message}${e.filename ? ` (${e.filename.split('/').pop()}:${e.lineno})` : ''}`));
+  window.addEventListener('unhandledrejection', (e) => report(String(e.reason?.message || e.reason)));
+  if (DEBUG) log(`debug on · ${navigator.userAgent.slice(0, 80)} · ${innerWidth}x${innerHeight} dpr ${devicePixelRatio}`);
+}
 
 const INTERACT_DIST = 1.6; // 선반/고기/가스레인지와 상호작용할 수 있는 거리
 const DOOR_DIST = 2.5;     // 문은 더 멀리서도 열린다 (3인칭에서는 가까워 보여도 실제로는 멀어서 E 가 인벤토리로 새던 문제)
@@ -71,33 +102,47 @@ const daynight = new DayNight(world.lights);
 const fadeEl = document.getElementById('fade'), hurtEl = document.getElementById('hurt');
 let seq = null; // 잠자기 / 쓰러지기 연출 { kind, t, done }. 진행 중에는 입력을 받지 않는다
 let tempScope = false; // 3인칭에서 우클릭 조준 때문에 잠시 1인칭 스코프 시점으로 들어가 있는 중
+let sleeping = false;  // 멀티 잠자기: 접속자 절반이 잘 때까지 침대에 누워 기다리는 중 (37단계)
+let lastAttacker = null; // 마지막으로 나를 맞힌 플레이어 { id, name } (킬 로그용)
 function startSleep() {
-  if (seq) return;
+  if (seq || sleeping) return;
+  if (net.online) { sleeping = true; net.sendSleep(true); ui.openSleep(); return; } // 멀티: 투표. 아침은 서버가 알려 준다 (onMorning)
   seq = { kind: 'sleep', t: 0, done: false };
+}
+function wakeUp(tell = true) {
+  if (!sleeping) return;
+  sleeping = false;
+  ui.closeSleep();
+  if (tell) net.sendSleep(false);
 }
 function startDeath() {
   if (seq?.kind === 'death') return;
+  wakeUp(false);
   seq = { kind: 'death', t: 0, done: false };
-  ui.toast('쓰러졌어요... 침대에서 깨어납니다', 3000);
+  if (net.online) net.sendDied(lastAttacker?.id ?? null);
+  ui.toast(lastAttacker ? `${lastAttacker.name} 님에게 당했어요... 침대에서 깨어납니다` : '쓰러졌어요... 침대에서 깨어납니다', 3000);
 }
 function updateSeq(dt) {
   if (!seq) { fadeEl.style.opacity = 0; return; }
   seq.t += dt;
-  const dur = seq.kind === 'sleep' ? 1.0 : 1.6; // 암전되는 시간. 다 어두워진 순간에 상태를 바꾼다
+  const dur = seq.kind === 'sleep' ? 1.0 : seq.kind === 'morning' ? 0.5 : 1.6; // 암전되는 시간. 다 어두워진 순간에 상태를 바꾼다
   if (!seq.done && seq.t >= dur) {
     seq.done = true;
-    daynight.skipToMorning();
-    if (seq.kind === 'sleep') {
+    if (!net.online && seq.kind !== 'morning') daynight.skipToMorning(); // 멀티에서는 시계가 서버 것이라 건드리지 않는다
+    if (seq.kind === 'morning') {
+      // 서버가 아침을 알려 왔을 때의 짧은 암전. 할 일 없음
+    } else if (seq.kind === 'sleep') {
       vitals.revive({ health: 100, hunger: Math.max(10, vitals.hunger - 15) }); // 자는 동안도 배는 고파진다
       ui.toast(`잘 잤어요. ${daynight.day}일차 아침, 체력 회복!`, 3000);
     } else {
       vitals.revive({ health: 100, hunger: 60 });
       player.position.set(2.2, 0, 2.4); player.heading = Math.PI; player.group.rotation.y = Math.PI; // 침대 옆
       world.animals.calmAll();
-      ui.toast(`${daynight.day}일차 아침, 침대에서 깨어났어요. 가방은 그대로예요`, 3500);
+      lastAttacker = null;
+      ui.toast(net.online ? '침대에서 깨어났어요. 가방은 그대로예요' : `${daynight.day}일차 아침, 침대에서 깨어났어요. 가방은 그대로예요`, 3500);
     }
   }
-  const hold = dur + 0.4, end = dur + 1.4;
+  const hold = dur + (seq.kind === 'death' ? 1.4 : 0.4), end = hold + 1.0; // 쓰러지면 3초쯤 뒤에 깨어난다
   const o = seq.t < dur ? seq.t / dur : seq.t < hold ? 1 : 1 - (seq.t - hold) / (end - hold);
   fadeEl.style.opacity = Math.max(0, Math.min(1, o));
   if (seq.t >= end) seq = null;
@@ -218,17 +263,19 @@ const skinForNet = () => (player.skin?.format === 'qchar' && player.skin.params 
 ui.initNet();
 ui.initPause();
 if (!ui.$('netUrl').value && DEFAULT_WS) ui.$('netUrl').value = DEFAULT_WS;
-net.onStatus = (s, detail) => ui.setNetStatus(s, detail, net.count);
-net.onJoin = (p) => { const existed = remotes.has(p.id); remotes.get(p.id)?.dispose(); remotes.set(p.id, new RemotePlayer(scene, p)); if (!existed) ui.addChat({ system: true, text: `${p.name} 님이 들어왔어요` }); ui.setNetStatus(net.status, '', net.count); };
+net.onStatus = (s, detail) => { ui.setNetStatus(s, s === 'online' ? (net.room && net.room !== 'main' ? `방 ${net.room}` : '') : detail, net.count); if (s !== 'online') wakeUp(false); };
+net.onJoin = (p) => { const existed = remotes.has(p.id); remotes.get(p.id)?.dispose(); remotes.set(p.id, new RemotePlayer(scene, p, world.shootables)); if (!existed) ui.addChat({ system: true, text: `${p.name} 님이 들어왔어요` }); ui.setNetStatus(net.status, '', net.count); };
 net.onLeave = (id) => { const r = remotes.get(id); if (r) { ui.addChat({ system: true, text: `${r.name} 님이 나갔어요` }); r.dispose(); remotes.delete(id); } ui.setNetStatus(net.status, '', net.count); };
 net.onState = (id, s) => remotes.get(id)?.setState(s);
 net.onSkin = (id, skin) => remotes.get(id)?.setSkin(skin);
 net.onChat = (m) => ui.addChat({ name: m.name, text: m.text, me: m.id === net.id });
-net.onNameTaken = (n) => { ui.toast(`"${n}" 은 이미 누가 쓰고 있어요. 다른 이름을 적어 주세요`, 4000); ui.toggleNetPanel(false); ui.openStart(); };
-ui.onConnect = (name, url) => { setMyName(name); net.connect(url, { name, skin: skinForNet() }); };
+net.onNameTaken = (n) => { ui.toast(`"${n}" 은 이미 누가 쓰고 있어요. 다른 이름을 적어 주세요`, 4000); ui.toggleNetPanel(false); ui.openStart({ room: HUB.room, lobby: !!HUB.back }); };
+ui.onConnect = (name, url, room) => { setMyName(name); net.connect(url, { name, skin: skinForNet(), room: room || HUB.room || '' }); };
 // 내 이름표: 시작 화면에서 받은 이름을 내 머리 위에도 (3인칭에서만 보인다). 색 규칙은 남들 이름표와 같다
 let myTag = null;
+let myName = '';
 function setMyName(name) {
+  myName = name;
   if (myTag) { player.group.remove(myTag); myTag.material.map?.dispose(); myTag.material.dispose(); }
   myTag = makeNameTag(name, playerColor(name));
   myTag.position.y = 1.92;
@@ -246,10 +293,54 @@ input.onEscape = () => {
   if (ui.pauseOpen) ui.togglePause(false);
   else if (!ui.anyPanelOpen && !seq) ui.togglePause(true);
 };
+// 이름 바꾸기 (일시 정지 메뉴): 혼자면 바로, 멀티면 서버가 중복을 확인한 뒤 모두에게 알린다
+const saveName = (name) => { try { localStorage.setItem('roomsim.net', JSON.stringify({ ...ui.netSaved(), name })); } catch {} ui.$('netName').value = name; };
+ui.onRename = (name) => {
+  if (name === myName) { ui.togglePause(false); return; }
+  if (net.online) net.rename(name);
+  else { setMyName(name); saveName(name); ui.togglePause(false); ui.toast(`이름을 "${name}" 으로 바꿨어요`); }
+};
+net.onRenamed = (name) => { setMyName(name); saveName(name); ui.togglePause(false); ui.toast(`이름을 "${name}" 으로 바꿨어요`); };
+net.onRenameFail = (name) => ui.toast(`"${name}" 은 이미 누가 쓰고 있어요`, 3000);
+net.onRename = (id, name, old) => { remotes.get(id)?.setName(name); ui.addChat({ system: true, text: `${old} 님이 이름을 ${name} 으로 바꿨어요` }); };
+// --- PvP · 공유 시계 · 잠자기 투표 (37단계) ---
+// 판정은 쏜 사람이 하고(weapons.shoot 의 userData.remote), 서버가 무기별 피해·연사 간격을 검사해 맞은 사람에게 전달한다
+weapons.onPvpHit = (id, weapon, n) => { if (net.online) { net.sendHit(id, weapon, n); ui.flashHit('명중'); } };
+weapons.onShot = (muzzle, dir, w) => { if (net.online) net.sendShot([+muzzle.x.toFixed(2), +muzzle.y.toFixed(2), +muzzle.z.toFixed(2)], [+dir.x.toFixed(3), +dir.y.toFixed(3), +dir.z.toFixed(3)], w); };
+net.onHit = (m) => {
+  if (seq || vitals.dead) return;
+  lastAttacker = { id: m.from, name: m.name };
+  wakeUp(true); // 자다가 맞으면 깬다
+  vitals.damage(m.dmg, { pvp: true, from: m.from });
+};
+const _so = new THREE.Vector3(), _sd = new THREE.Vector3();
+net.onShot = (id, o, d, w) => {
+  _so.set(o[0], o[1], o[2]); _sd.set(d[0], d[1], d[2]).normalize();
+  weapons.remoteShot(_so, _sd, w, player.position.distanceTo(_so));
+};
+net.onKill = (m) => ui.addChat({ system: true, text: m.kname ? `💀 ${m.kname} 님이 ${m.vname} 님을 쓰러뜨렸어요` : `💀 ${m.vname} 님이 쓰러졌어요` });
+net.onTime = (tm, day) => daynight.sync(tm, day); // 시계는 서버가 주인
+let lastSleepers = 0;
+net.onSleepers = (n, need) => {
+  ui.setSleepers(n, need);
+  if (!sleeping && n > lastSleepers) ui.toast(`😴 ${n} / ${need}명이 자고 있어요. 침대에서 E 로 같이 자면 아침이 와요`, 3000);
+  lastSleepers = n;
+};
+net.onMorning = (day) => {
+  daynight.t = 0; daynight.day = day;
+  if (sleeping) { wakeUp(false); vitals.hunger = Math.max(10, vitals.hunger - 15); ui.toast(`잘 잤어요. ${day}일차 아침!`, 3000); }
+  else ui.toast(`${day}일차 아침이 됐어요`, 2500);
+  if (!seq) seq = { kind: 'morning', t: 0, done: false }; // 모두 같이 짧게 암전
+};
+ui.initSleep();
+ui.onWake = () => wakeUp(true);
+// 로비로 (38단계): 접속을 끊고 복귀 URL 로 그대로 이동. 진행 상황은 beforeunload 저장이 받는다
+ui.onLobby = () => { net.disconnect(); goLobby(); };
+if (HUB.back) ui.$('pauseLobby').classList.remove('hidden');
 ui.onLeave = () => {
   net.disconnect();
   ui.closeChatInput();
-  ui.openStart();
+  ui.openStart({ room: HUB.room, lobby: !!HUB.back });
 };
 
 // 지도 (34단계): 미니맵은 항상, 전체 지도는 M
@@ -321,6 +412,7 @@ const touch = IS_TOUCH ? new TouchControls(input, {
   onView: () => input.onToggleView(),
   onChat: () => { if (net.online) input.onChat(); else { ui.toggleNetPanel(); syncPointerLock(); } },
   onMenu: () => { document.body.classList.toggle('menu'); },
+  isGun: () => weapons.current?.type === 'gun', // 조준 버튼을 토글로 쓸지
 }) : null;
 if (touch) input.touch = touch;
 
@@ -402,7 +494,7 @@ function frame() {
     ui.setPrompt('E  요리하기 (배합법 보기)');
     if (pressE) { ui.toggleInvPanel(true, 'recipes'); syncPointerLock(); }
   } else if (nearKind === 'bed') {
-    ui.setPrompt(`E  잠자기 (${daynight.night ? '아침까지' : '다음 날 아침까지'} · 체력 회복)`);
+    ui.setPrompt(net.online ? 'E  잠자기 (접속자 절반이 자면 아침 · 자는 동안 체력 회복)' : `E  잠자기 (${daynight.night ? '아침까지' : '다음 날 아침까지'} · 체력 회복)`);
     if (pressE) startSleep();
   } else if (nearKind === 'vendor') {
     ui.setPrompt(`E  ${near.name} — ${near.greet}`);
@@ -423,7 +515,7 @@ function frame() {
   if (rig.showcase && input.pressed('Mouse0')) rig.stopAutoSpin(); // 화면을 누르면 자동 회전 멈춤 (캔버스 mousedown 만 잡히므로 패널 클릭은 무관)
   // 쇼케이스 중에는 이동·점프를 받지 않는다 (카메라를 돌리는 드래그가 이동으로 새지 않게)
   if (myTag) myTag.visible = !first && !rig.showcase;
-  player.update(dt, rig.showcase || seq || ui.startOpen || ui.pauseOpen ? NO_INPUT : input, rig.yaw, world, !rig.showcase && (first || weapons.aiming || weapons.swinging));
+  player.update(dt, rig.showcase || seq || sleeping || ui.startOpen || ui.pauseOpen ? NO_INPUT : input, rig.yaw, world, !rig.showcase && (first || weapons.aiming || weapons.swinging));
   weapons.poseArms(dt, first); // 3인칭 조준 자세 / 칼 휘두르기 (애니메이션 위에 덮어쓰기)
   const mouse = input.consume();
   if (ui.wheelOpen) { mouse.dx = 0; mouse.dy = 0; } // 휠을 고르는 동안은 시점을 돌리지 않는다
@@ -449,13 +541,14 @@ function frame() {
   // 시간·생존 (30~31단계)
   daynight.update(dt, player.position);
   if (!seq) vitals.update(dt);
+  if (sleeping && !vitals.dead) vitals.health = Math.min(100, vitals.health + dt * 3); // 자는 동안 천천히 회복 (약 30초에 가득)
   updateSeq(dt);
   hurtEl.style.opacity = vitals.hurtT > 0 ? Math.min(1, vitals.hurtT / 0.4) * 0.7 : vitals.health < 25 ? 0.25 + 0.15 * Math.sin(performance.now() / 150) : 0;
   ui.setVitals(vitals, daynight.timeText());
   worldMap.update(player, rig.yaw, ui.mapPanelOpen);
   touch?.setHidden((ui.anyPanelOpen && !rig.showcase) || !!seq);
   // 멀티플레이: 내 상태 보내기(10Hz), 남들 보간
-  net.update(dt, { p: [+player.position.x.toFixed(2), +player.position.y.toFixed(2), +player.position.z.toFixed(2)], h: +player.heading.toFixed(3), a: player.animState || 'idle', w: weapons.current?.id ?? null });
+  net.update(dt, { p: [+player.position.x.toFixed(2), +player.position.y.toFixed(2), +player.position.z.toFixed(2)], h: +player.heading.toFixed(3), a: player.animState || 'idle', w: weapons.current?.id ?? null, hp: Math.round(vitals.health) });
   for (const r of remotes.values()) r.update(dt);
   autoSave.update(dt);
   ui.setGame(world.range.game);
@@ -497,11 +590,12 @@ async function start() {
     setMyName(name);
     if (multi) {
       const url = ui.$('netUrl').value.trim();
-      if (/^wss?:\/\//.test(url)) net.connect(url, { name, skin: skinForNet() });
+      const room = HUB.room || ui.$('netRoom').value.trim(); // 로비 방 코드 > 패널에 적은 방 > 기본 방
+      if (/^wss?:\/\//.test(url)) net.connect(url, { name, skin: skinForNet(), room });
       else { ui.toast('서버 주소가 없어요. 멀티플레이 패널에 ws:// 주소를 넣고 접속하세요', 4000); ui.toggleNetPanel(true); }
     }
   };
-  ui.openStart();
+  ui.openStart({ name: HUB.name, room: HUB.room, lobby: !!HUB.back });
   renderer.setAnimationLoop(frame); // 모니터 주사율에 맞춰 실행 (보통 60fps)
 }
 
@@ -511,4 +605,4 @@ start().catch((err) => {
 });
 
 // 디버그/테스트용
-window.__game = { renderer, scene, camera, player, world, rig, skins, ui, input, weapons, setMode, THREE, inv, snapshot, restore, autoSave, vitals, daynight, eat, startSleep, net, remotes, skinForNet, setMyName, get myTag() { return myTag; } };
+window.__game = { renderer, scene, camera, player, world, rig, skins, ui, input, weapons, setMode, THREE, inv, snapshot, restore, autoSave, vitals, daynight, eat, startSleep, net, remotes, skinForNet, setMyName, get myTag() { return myTag; }, startSleep, wakeUp, get sleeping() { return sleeping; }, get seq() { return seq; }, HUB };

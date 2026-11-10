@@ -41,6 +41,14 @@ export class DayNight {
   // 잠자기: 다음 날 06:00 으로
   skipToMorning() { this.t = 0; this.day += 1; }
 
+  // 서버 시계에 맞춘다 (37단계): 2초마다 오는 값과 5초 넘게 어긋나면 바로 맞추고, 작은 차이는 조금씩 당긴다 (해가 덜컥거리지 않게)
+  sync(tm, day) {
+    const t = THREE.MathUtils.clamp(tm / DAY_LENGTH, 0, 0.9999);
+    if (Math.abs(t - this.t) > 5 / DAY_LENGTH) this.t = t;
+    else this.t += (t - this.t) * 0.2;
+    if (Number.isFinite(day)) this.day = Math.max(1, day | 0);
+  }
+
   snapshot() { return { t: this.t, day: this.day }; }
   load(s) {
     if (!s) return;

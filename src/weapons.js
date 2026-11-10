@@ -332,6 +332,8 @@ export class WeaponSystem {
     this.ammo = Object.fromEntries(WEAPONS.filter((w) => w.mag).map((w) => [w.id, w.mag]));
     // 예비 탄약 (33단계): 무한이 아니다. 광장 잡화점에서 산다
     this.reserve = { pistol: 48, rifle: 120, shotgun: 24, sniper: 20 };
+    this.onPvpHit = null; // (remoteId, weaponKey, n) 다른 플레이어를 맞힘 (37단계)
+    this.onShot = null;   // (muzzle, dir, weaponId) 사격함 (남들에게 효과 중계)
     this.cool = 0;
     this.reloadT = 0;
     this.aiming = false;
@@ -809,6 +811,7 @@ export class WeaponSystem {
     if (w.auto) this.heat = Math.min(1, this.heat + 0.15);
 
     let best = 0, hitTarget = false;
+    const pvp = new Map(); // 다른 플레이어 → 맞은 탄알 수 (37단계)
     const d = new THREE.Vector3(), side = new THREE.Vector3(), up = new THREE.Vector3();
     side.crossVectors(dir, THREE.Object3D.DEFAULT_UP).normalize();
     up.crossVectors(side, dir).normalize();
@@ -824,9 +827,12 @@ export class WeaponSystem {
         end = hit.point;
         const target = hit.object.userData.target;
         const animal = hit.object.userData.animal;
+        const remote = hit.object.userData.remote;
         const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : d.clone().negate();
         if (n.dot(d) > 0) n.negate(); // 뒷면을 맞춘 경우
-        if (animal) {
+        if (remote) {
+          pvp.set(remote, (pvp.get(remote) || 0) + 1); // 다른 플레이어: 서버에 보고 (main 이 onPvpHit 으로 받는다)
+        } else if (animal) {
           this.world.animals.hit(animal, w.dmg ?? 1, hit.point); // 동물: 점수 대신 HP 를 깎는다 (총알 자국은 안 남긴다)
         } else if (target) {
           const score = this.world.range.hit(target, hit.point, 0);
@@ -841,6 +847,8 @@ export class WeaponSystem {
       this.fx.tracer(muzzle, end);
     }
     if (hitTarget) this.countHit(best);
+    for (const [r, n] of pvp) this.onPvpHit?.(r.id, w.id, n);
+    this.onShot?.(muzzle, dir, w.id);
     this.fx.muzzleFlash(muzzle);
     playShot(w.sound);
     this.rig.kick(w.recoil * (this.aiming ? 0.6 : 1) * (this.pip ? 0.5 : 1));
@@ -874,6 +882,19 @@ export class WeaponSystem {
   }
 
   // 근접 판정: 조준선 방향 reach 안의 첫 물체. 표적이면 점수, mark 면 자국을 남긴다. 맞으면 화면을 살짝 흔들어 타격감을 준다
+  // 다른 사람의 사격 (37단계): 서버가 중계한 총구 위치·방향으로 궤적·불꽃·소리만 그린다 (판정은 쏜 사람이 했다)
+  remoteShot(origin, dir, weaponId, dist) {
+    this.ray.set(origin, dir);
+    this.ray.near = 0.6; // 쏜 사람 자신의 피격 캡슐은 건너뛴다
+    this.ray.far = MAX_RANGE;
+    const hit = this.ray.intersectObjects(this.world.shootables, false)[0];
+    const end = hit ? hit.point : origin.clone().addScaledVector(dir, MAX_RANGE);
+    this.fx.tracer(origin, end);
+    this.fx.muzzleFlash(origin);
+    const w = WEAPONS.find((x) => x.id === weaponId);
+    if (w?.sound && dist < 60) playShot(w.sound);
+  }
+
   meleeHit(first, reach, score, mark) {
     const { origin, dir, near } = this.aimRay(first);
     this.ray.set(origin, dir);
@@ -885,7 +906,10 @@ export class WeaponSystem {
     if (n.dot(dir) > 0) n.negate();
     const target = hit.object.userData.target;
     const animal = hit.object.userData.animal;
-    if (animal) {
+    const remote = hit.object.userData.remote;
+    if (remote) {
+      this.onPvpHit?.(remote.id, this.attack === 'stab' ? 'stab' : this.attack === 'punch' ? 'punch' : 'knife', 1);
+    } else if (animal) {
       this.world.animals.hit(animal, this.attack === 'stab' ? 2 : 1, hit.point);
     } else if (target) {
       const got = this.world.range.hit(target, hit.point, score);

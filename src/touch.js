@@ -21,8 +21,8 @@ const RUN_AT = 0.92;        // 이만큼 이상 밀면 달리기
 const BUTTONS = [
   // 순서가 곧 자리: 1줄 점프·조준·공격(크게), 2줄 E·R·무기
   { id: 'tJump', label: '⤒', title: '점프', key: 'Space' },
-  { id: 'tAim', label: '⌖', title: '조준', mouse: 2 },
-  { id: 'tFire', label: '◎', title: '공격', mouse: 0 },
+  { id: 'tAim', label: '⌖', title: '조준', mouse: 2, toggle: true },   // 총이면 탭으로 켜고 끈다 (손가락이 모자라므로)
+  { id: 'tFire', label: '◎', title: '공격', mouse: 0, drag: true },    // 누른 채 끌면 시점도 돈다 (모바일 슈터 방식)
   { id: 'tUse', label: 'E', title: '상호작용', key: 'KeyE' },
   { id: 'tReload', label: 'R', title: '재장전', key: 'KeyR' },
   { id: 'tWeapon', label: '⇄', title: '무기 넘기기', action: 'weapon' },
@@ -46,6 +46,7 @@ export class TouchControls {
     this.stickId = null; // 조이스틱을 잡고 있는 손가락
     this.lookId = null;  // 시점을 돌리는 손가락
     this.lookLast = { x: 0, y: 0 };
+    this.bound = [];       // 버튼들의 놓기 함수 (releaseAll 용)
     document.body.classList.add('touch');
     this.build();
   }
@@ -125,28 +126,58 @@ export class TouchControls {
 
   bindButton(el, b) {
     const input = this.input;
-    const down = (e) => {
-      e.preventDefault();
+    let dragId = null, last = null;
+    const press = () => {
       el.classList.add('on');
       if (b.key) { input.keys.add(b.key); input.justPressed.add(b.key); }
       if (b.mouse !== undefined) { input.mouse.add(b.mouse); input.justPressed.add('Mouse' + b.mouse); }
-      if (b.action) this.fire(b.action);
     };
-    const up = () => {
+    const release = () => {
       el.classList.remove('on');
       if (b.key) input.keys.delete(b.key);
       if (b.mouse !== undefined) input.mouse.delete(b.mouse);
+      dragId = null;
+    };
+    this.bound.push(release);
+    const down = (e) => {
+      e.preventDefault();
+      // 조준 토글: 총을 들었을 때만. 켜져 있으면 끈다 (칼·맨손은 보통 버튼처럼 누르는 동안만)
+      if (b.toggle && this.actions.isGun?.()) {
+        if (el.classList.contains('on')) release(); else press();
+        return;
+      }
+      press();
+      if (b.action) this.fire(b.action);
+      if (b.drag) { dragId = e.pointerId; last = { x: e.clientX, y: e.clientY }; el.setPointerCapture(e.pointerId); } // 캡처하면 버튼 밖으로 나가도 pointerleave 가 안 온다
+    };
+    const up = (e) => {
+      if (b.toggle && this.actions.isGun?.()) return; // 토글은 떼도 유지
+      if (dragId !== null && e && e.pointerId !== dragId) return;
+      release();
     };
     el.addEventListener('pointerdown', down);
     el.addEventListener('pointerup', up);
     el.addEventListener('pointercancel', up);
-    el.addEventListener('pointerleave', up);
+    el.addEventListener('pointerleave', (e) => { if (dragId === null) up(e); });
+    if (b.drag) {
+      el.addEventListener('pointermove', (e) => {
+        if (e.pointerId !== dragId || !last) return;
+        const dx = (e.clientX - last.x) * LOOK_SENS, dy = (e.clientY - last.y) * LOOK_SENS;
+        last = { x: e.clientX, y: e.clientY };
+        input.mouseDX += dx; input.mouseDY += dy;
+      });
+    }
     el.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
+  // 모든 버튼 놓기 (패널이 열리거나 무기가 바뀔 때. 조준 토글도 꺼진다)
+  releaseAll() {
+    for (const r of this.bound) r();
   }
 
   fire(action) {
     const a = this.actions;
-    if (action === 'weapon') a.onCycleWeapon?.();
+    if (action === 'weapon') { this.releaseAll(); a.onCycleWeapon?.(); }
     else if (action === 'inventory') a.onInventory?.();
     else if (action === 'map') a.onMap?.();
     else if (action === 'view') a.onView?.();
@@ -157,6 +188,6 @@ export class TouchControls {
   // 패널이 열려 있으면 조작판을 숨긴다 (패널 뒤에서 조이스틱이 눌리지 않게)
   setHidden(hidden) {
     this.root.classList.toggle('hidden', hidden);
-    if (hidden) { this.axis = { x: 0, z: 0 }; this.running = false; this.stickId = null; this.lookId = null; this.knob.style.transform = ''; }
+    if (hidden) { this.axis = { x: 0, z: 0 }; this.running = false; this.stickId = null; this.lookId = null; this.knob.style.transform = ''; this.releaseAll(); }
   }
 }

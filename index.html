@@ -276,15 +276,22 @@
 
       /* 시작 화면: 뒤는 흐리게, 가운데 카드 */
       #pause { z-index: 34; }
-      #start, #pause { position: fixed; inset: 0; z-index: 35; display: flex; align-items: center; justify-content: center; background: rgba(20, 24, 32, 0.35); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
-      #pause .card, #start .card { width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 24px); overflow-y: auto; box-sizing: border-box; background: rgba(255, 255, 255, 0.96); border-radius: 14px; padding: 22px 24px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3); }
-      #pause h2, #start h2 { margin: 0 0 14px; font-size: 22px; }
+      #sleep { z-index: 33; background: rgba(0, 0, 0, 0.62) !important; }
+      #sleepCount { font-size: 15px; font-weight: 600; color: #333; }
+      #start, #pause, #sleep { position: fixed; inset: 0; z-index: 35; display: flex; align-items: center; justify-content: center; background: rgba(20, 24, 32, 0.35); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+      #sleep .card, #pause .card, #start .card { width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 24px); overflow-y: auto; box-sizing: border-box; background: rgba(255, 255, 255, 0.96); border-radius: 14px; padding: 22px 24px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3); }
+      #sleep h2, #pause h2, #start h2 { margin: 0 0 14px; font-size: 22px; }
       #start label { display: block; font-size: 13px; color: #555; }
       #start input { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; padding: 10px 12px; font: 16px system-ui, sans-serif; border: 1px solid #bbb; border-radius: 8px; }
-      #pause .btns, #start .btns { display: flex; gap: 8px; margin-top: 14px; }
-      #pause .btns button, #start .btns button { flex: 1; padding: 12px 0; border: 1px solid #2b7cff; border-radius: 8px; background: #fff; color: #2b7cff; font: 600 15px system-ui, sans-serif; cursor: pointer; }
-      #pause .btns button.primary, #start .btns button.primary { background: #2b7cff; color: #fff; }
-      #pause .hint, #start .hint { margin-top: 12px; font-size: 12px; color: #777; line-height: 1.45; }
+      #sleep .btns, #pause .btns, #start .btns { display: flex; gap: 8px; margin-top: 14px; }
+      #sleep .btns button, #pause .btns button, #start .btns button { flex: 1; padding: 12px 0; border: 1px solid #2b7cff; border-radius: 8px; background: #fff; color: #2b7cff; font: 600 15px system-ui, sans-serif; cursor: pointer; }
+      #startLobbyRow { margin-top: 8px; }
+      #startLobbyRow button, #pauseLobby { border-color: #999 !important; color: #555 !important; }
+      #sleep .btns button.primary, #pause .btns button.primary, #start .btns button.primary { background: #2b7cff; color: #fff; }
+      #pause label .row { display: flex; gap: 6px; margin-top: 4px; }
+      #pause label .row input { margin-top: 0; }
+      #pause label .row button { flex: 0 0 auto; padding: 0 14px; border: 1px solid #2b7cff; border-radius: 8px; background: #fff; color: #2b7cff; font: 600 13px system-ui, sans-serif; cursor: pointer; }
+      #sleep .hint, #pause .hint, #start .hint { margin-top: 12px; font-size: 12px; color: #777; line-height: 1.45; }
       #start .keys { margin-top: 12px; padding-top: 10px; border-top: 1px solid #e3e3e3; display: grid; grid-template-columns: 1fr 1fr; gap: 3px 14px; font-size: 12px; color: #444; }
       #start .keys b { display: inline-block; min-width: 64px; color: #111; }
       #start .keys.touchKeys { display: none; }
@@ -342,11 +349,22 @@
     <div id="pause" class="hidden">
       <div class="card">
         <h2>일시 정지</h2>
+        <label>이름<span class="row"><input id="pauseName" maxlength="16" placeholder="새 이름 (16자)" autocomplete="off" /><button id="pauseRename" type="button">이름 바꾸기</button></span></label>
         <div class="btns">
           <button id="pauseResume" class="primary">계속하기 (ESC)</button>
           <button id="pauseLeave">나가기</button>
+          <button id="pauseLobby" class="hidden">로비로</button>
         </div>
         <div class="hint">나가기를 누르면 접속을 끊고 시작 화면으로 돌아가요. 진행 상황은 그대로 저장돼 있어요.</div>
+      </div>
+    </div>
+    <!-- 멀티 잠자기 (37단계): 접속자 절반이 자야 아침. 그동안 체력이 천천히 회복 -->
+    <div id="sleep" class="hidden">
+      <div class="card">
+        <h2>😴 잠자는 중</h2>
+        <div id="sleepCount">자는 사람 1명</div>
+        <div class="hint">접속자의 절반이 침대에 누우면 모두 아침이 돼요. 자는 동안 체력이 천천히 회복돼요.</div>
+        <div class="btns"><button id="sleepWake" class="primary">일어나기</button></div>
       </div>
     </div>
     <div id="start" class="hidden">
@@ -357,6 +375,8 @@
           <button id="startSingle" class="primary">혼자 하기</button>
           <button id="startMulti">같이 하기 (멀티)</button>
         </div>
+        <div id="startRoom" class="hint hidden"></div>
+        <div class="btns hidden" id="startLobbyRow"><button id="startLobby">로비로 돌아가기</button></div>
         <div class="hint">같이 하기는 웹소켓 서버가 필요해요. 서버 주소는 HUD 의 "멀티플레이" 패널에서 바꿀 수 있어요.</div>
         <div class="keys">
           <div><b>W A S D</b>이동</div><div><b>Shift</b>달리기</div>
@@ -371,7 +391,7 @@
           <div><b>G</b>연습 게임 (사격장)</div><div><b>Enter</b>채팅 (멀티)</div>
           <div><b>- / =</b>카메라 거리</div><div><b>Shift+휠</b>핫바 줄 바꾸기</div>
         </div>
-        <div class="keys touchKeys"><b>터치</b> 왼쪽 스틱 이동 (끝까지 밀면 달리기) · 빈 화면 드래그 시점 · ◎ 공격 · ⌖ 조준 · E 상호작용 · ☰ 메뉴</div>
+        <div class="keys touchKeys"><b>터치</b> 왼쪽 스틱 이동 (끝까지 밀면 달리기) · 빈 화면 드래그 시점 · ◎ 공격 (누른 채 끌면 시점) · ⌖ 조준 (총이면 탭으로 켜고 끄기) · E 상호작용 · ☰ 메뉴</div>
       </div>
     </div>
     <div id="toast" class="hidden"></div>
@@ -404,7 +424,7 @@
     </div>
 
     <div id="hud">
-      <div class="touchHelp"><b>터치</b> 왼쪽 스틱 이동 (끝까지 밀면 달리기) · 빈 화면 드래그 시점 · ◎ 공격 · ⌖ 조준(누르고 있기) · E 상호작용 · ☰ 이 메뉴</div>
+      <div class="touchHelp"><b>터치</b> 왼쪽 스틱 이동 (끝까지 밀면 달리기) · 빈 화면 드래그 시점 · ◎ 공격 (누른 채 끌면 시점도 돌아요) · ⌖ 조준 (총이면 탭으로 켜고 끄기) · E 상호작용 · ☰ 이 메뉴 · 오류가 나면 화면에 표시돼요 (주소 뒤 ?debug=1 로 자세히)</div>
       <div><b>W A S D</b> 이동 (화살표도 가능)</div>
       <div><b>Shift</b> 달리기 · <b>Space</b> 점프</div>
       <div><b>마우스</b> 시점 회전 (클릭해 잠금 · ESC 해제) · <b>- / =</b> 카메라 거리</div>
@@ -421,6 +441,7 @@
       <div><b>우클릭</b> 소총·저격총은 3인칭에서도 누르고 있는 동안 스코프 시점 · <b>우클릭 2번</b> 배율 전환</div>
       <div><b>G</b> 연습 게임 시작 / 중지 (사격장 안에서 · 60초 · 움직이는 표적)</div>
       <div><b>사냥</b> 현관문 → 마당 → 울타리 밖 들판의 동물을 쏘면 종류별 재료를 떨어뜨려요. 텃밭 호박·숲 버섯도 따요</div>
+      <div><b>PvP</b> 같이 하기(멀티)에서는 서로 쏠 수 있어요. 쓰러지면 3초 뒤 침대에서 부활 · 시계는 모두 같고, 침대 잠자기는 접속자 절반이 자야 아침 (자는 동안 체력 회복)</div>
       <div id="mode">모드: 3인칭</div>
       <div id="room">현재: 침실</div>
 
@@ -463,6 +484,7 @@
       <h3>멀티플레이 <button id="netClose" title="닫기">×</button></h3>
       <div class="row"><label>닉네임</label><input id="netName" maxlength="16" placeholder="이름 (16자)" /></div>
       <div class="row"><label>서버</label><input id="netUrl" placeholder="ws://localhost:8787 또는 wss://…onrender.com" /></div>
+      <div class="row"><label>방 코드</label><input id="netRoom" maxlength="24" placeholder="비우면 기본 방 (영문·숫자, 로비에서 오면 자동)" /></div>
       <div class="row" style="justify-content: flex-end;">
         <button id="netDisconnect" class="secondary">끊기</button>
         <button id="netConnect" class="primary">접속</button>

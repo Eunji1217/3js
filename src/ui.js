@@ -291,13 +291,14 @@ export class UI {
     const saved = this.netSaved();
     this.$('netName').value = saved.name;
     this.$('netUrl').value = saved.url;
+    this.$('netRoom').value = saved.room || '';
     this.$('netOpen').addEventListener('click', () => this.toggleNetPanel());
     this.$('netClose').addEventListener('click', () => this.toggleNetPanel(false));
     this.$('netConnect').addEventListener('click', () => {
-      const name = this.$('netName').value.trim() || '손님', url = this.$('netUrl').value.trim();
+      const name = this.$('netName').value.trim() || '손님', url = this.$('netUrl').value.trim(), room = this.$('netRoom').value.trim();
       if (!/^wss?:\/\//.test(url)) { this.toast('서버 주소는 ws:// 또는 wss:// 로 시작해야 해요', 3000); return; }
-      try { localStorage.setItem('roomsim.net', JSON.stringify({ name, url })); } catch {}
-      this.onConnect?.(name, url);
+      try { localStorage.setItem('roomsim.net', JSON.stringify({ name, url, room })); } catch {}
+      this.onConnect?.(name, url, room);
       this.toggleNetPanel(false);
     });
     this.$('netDisconnect').addEventListener('click', () => this.onDisconnect?.());
@@ -311,14 +312,19 @@ export class UI {
   }
 
   netSaved() {
-    const d = { name: '', url: '' };
+    const d = { name: '', url: '', room: '' };
     try { return { ...d, ...JSON.parse(localStorage.getItem('roomsim.net') || '{}') }; } catch { return d; }
   }
 
   // 시작 화면: 이름을 받고 혼자/같이 를 고른다. 닫히면 onStart(name, multi)
-  openStart() {
+  /** @param {{ name?: string|null, room?: string|null, lobby?: boolean }} [hub] 로비에서 왔을 때의 힌트 (38단계) */
+  openStart(hub = {}) {
     const el = this.$('start'), name = this.$('startName');
-    name.value = this.netSaved().name;
+    name.value = hub.name || this.netSaved().name; // value 로만 넣는다 (innerHTML 금지 — 계약)
+    const roomEl = this.$('startRoom');
+    roomEl.classList.toggle('hidden', !hub.room);
+    if (hub.room) roomEl.textContent = `로비 방 「${hub.room}」 에서 왔어요. 같이 하기를 누르면 같은 방 사람들과 만나요`;
+    this.$('startLobbyRow').classList.toggle('hidden', !hub.lobby);
     el.classList.remove('hidden');
     const go = (multi) => {
       const n = name.value.trim() || '손님';
@@ -342,12 +348,33 @@ export class UI {
     this.$('pauseResume').addEventListener('click', () => this.togglePause(false));
     this.$('pauseLeave').addEventListener('click', () => { this.togglePause(false); this.onLeave?.(); });
     this.$('pauseOpen').addEventListener('click', () => this.togglePause(true));
+    // 로비로 (38단계): hub_return 이 있을 때만 보인다
+    this.onLobby = null;
+    this.$('pauseLobby').addEventListener('click', () => this.onLobby?.());
+    this.$('startLobby').addEventListener('click', () => this.onLobby?.());
+    // 이름 바꾸기: onRename(name). 실제 반영은 main 이 (혼자면 바로, 멀티면 서버 확인 뒤)
+    this.onRename = null;
+    const nameEl = this.$('pauseName');
+    const apply = () => { const n = nameEl.value.trim(); if (n) this.onRename?.(n); };
+    this.$('pauseRename').addEventListener('click', apply);
+    nameEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') apply(); e.stopPropagation(); });
   }
   get pauseOpen() { return !this.$('pause').classList.contains('hidden'); }
+
+  // 멀티 잠자기 (37단계): 투표를 기다리는 동안 띄우는 화면
+  initSleep() {
+    this.onWake = null;
+    this.$('sleepWake').addEventListener('click', () => this.onWake?.());
+  }
+  get sleepOpen() { return !this.$('sleep').classList.contains('hidden'); }
+  openSleep() { this.$('sleep').classList.remove('hidden'); this.onPanelsChanged?.(); }
+  closeSleep() { if (!this.sleepOpen) return; this.$('sleep').classList.add('hidden'); this.onPanelsChanged?.(); }
+  setSleepers(n, need) { this.$('sleepCount').textContent = `자는 사람 ${n} / ${need}명 (${Math.max(0, need - n)}명 더 자면 아침)`; }
   togglePause(force) {
     const open = force === undefined ? !this.pauseOpen : force;
     if (open === this.pauseOpen) return;
     this.$('pause').classList.toggle('hidden', !open);
+    if (open) this.$('pauseName').value = this.netSaved().name;
     this.onPanelsChanged?.();
   }
 
@@ -362,7 +389,7 @@ export class UI {
 
   setNetStatus(status, detail, count) {
     const el = this.$('netStatus');
-    const text = status === 'online' ? `접속 중 · ${count}명 · Enter 채팅` : status === 'connecting' ? (detail || '접속하는 중...') : (detail || '오프라인 · HUD 의 "멀티플레이" 로 접속');
+    const text = status === 'online' ? `접속 중${detail ? ' · ' + detail : ''} · ${count}명 · Enter 채팅` : status === 'connecting' ? (detail || '접속하는 중...') : (detail || '오프라인 · HUD 의 "멀티플레이" 로 접속');
     if (el.textContent !== text) el.textContent = text;
     el.classList.toggle('online', status === 'online');
   }
@@ -535,7 +562,7 @@ export class UI {
   }
 
   get anyPanelOpen() {
-    return this.panelOpen || this.weaponPanelOpen || this.charPanelOpen || this.gamePanelOpen || this.invPanelOpen || this.shopPanelOpen || this.mapPanelOpen || this.netPanelOpen || this.startOpen || this.pauseOpen;
+    return this.panelOpen || this.weaponPanelOpen || this.charPanelOpen || this.gamePanelOpen || this.invPanelOpen || this.shopPanelOpen || this.mapPanelOpen || this.netPanelOpen || this.startOpen || this.pauseOpen || this.sleepOpen;
   }
 
   togglePanel(force) {
